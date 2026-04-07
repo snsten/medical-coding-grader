@@ -1,0 +1,257 @@
+{
+  "icd10_guidelines": {
+    "E10.9": {
+      "description": "Type 1 diabetes mellitus without complications",
+      "excludes1": ["E11", "E08", "E09", "E13"],
+      "gender_restriction": null,
+      "note": "Excludes1: Type 2 diabetes mellitus (E11.-), Drug or chemical induced diabetes mellitus (E09.-), Diabetes mellitus due to underlying condition (E08.-), Other specified diabetes mellitus (E13.-). Use additional code to identify complications."
+    },
+    "E11.9": {
+      "description": "Type 2 diabetes mellitus without complications",
+      "excludes1": ["E10", "E08", "E09", "E13"],
+      "gender_restriction": null,
+      "note": "Excludes1: Type 1 diabetes mellitus (E10.-), Drug or chemical induced diabetes mellitus (E09.-), Diabetes mellitus due to underlying condition (E08.-), Other specified diabetes mellitus (E13.-). Excludes2: gestational diabetes mellitus (O24.4-)."
+    },
+    "O80": {
+      "description": "Encounter for full-term uncomplicated delivery",
+      "excludes1": [],
+      "gender_restriction": "female",
+      "note": "Requires that the delivery be spontaneous, full term, of a single healthy infant without documentation of any complication of antepartum care. APPLICABLE TO FEMALE PATIENTS ONLY. This code is in the Pregnancy, Childbirth and the Puerperium chapter (O00-O9A) which by definition applies only to female patients. Coding this for a male patient represents a gender-sex clinical logic error.",
+      "age_restriction": "15-55",
+      "chapter": "Pregnancy, Childbirth and the Puerperium"
+    },
+    "Z00.00": {
+      "description": "Encounter for general adult medical examination without abnormal findings",
+      "excludes1": [],
+      "gender_restriction": null,
+      "note": "Use additional code to identify any abnormal findings. Excludes1: encounter for examination for administrative purposes (Z02.-). Applicable to adults of any gender."
+    },
+    "Z87.891": {
+      "description": "Personal history of other specified conditions",
+      "excludes1": [],
+      "gender_restriction": null,
+      "note": "Applicable to patients of any age or gender with a personal history of specified conditions not elsewhere classified."
+    },
+    "J44.1": {
+      "description": "Chronic obstructive pulmonary disease with acute exacerbation",
+      "excludes1": ["J45"],
+      "gender_restriction": null,
+      "note": "Excludes1: asthma (J45.-). Code also type of asthma if applicable. Excludes2: acute bronchitis (J20.-)."
+    },
+    "J45.20": {
+      "description": "Mild intermittent asthma, uncomplicated",
+      "excludes1": [],
+      "gender_restriction": null,
+      "note": "Excludes1 within J45 category: chronic obstructive pulmonary disease (J44.-). Code also: eosinophilic asthma if applicable."
+    },
+    "S52.501A": {
+      "description": "Unspecified fracture of the lower end of right radius, initial encounter for closed fracture",
+      "excludes1": [],
+      "gender_restriction": null,
+      "note": "7th character extensions for category S52: A = initial encounter for closed fracture (use during the active phase of treatment when the patient is receiving definitive treatment for the fracture, e.g., surgical treatment, emergency department encounter, evaluation and treatment by a new physician). D = subsequent encounter for fracture with routine healing (use for encounters after the patient has received active/definitive treatment for the fracture and is receiving routine care during the healing phase). G = subsequent encounter for fracture with delayed healing. K = subsequent encounter for fracture with nonunion. P = subsequent encounter for fracture with malunion. S = sequela. IMPORTANT: A follow-up visit after active treatment has concluded must use 7th character D (subsequent encounter), not A (initial encounter).",
+      "seventh_char_guidance": "Character 'A' (initial encounter) is appropriate ONLY during the active/definitive treatment phase. For follow-up visits after the fracture was initially treated, character 'D' (subsequent encounter for fracture with routine healing) must be used."
+    },
+    "S52.501D": {
+      "description": "Unspecified fracture of the lower end of right radius, subsequent encounter for fracture with routine healing",
+      "excludes1": [],
+      "gender_restriction": null,
+      "note": "Use 7th character D for encounters after active treatment is completed, when patient is receiving routine care during healing phase (e.g., cast checks, follow-up X-rays, physical therapy oversight)."
+    },
+    "M79.621": {
+      "description": "Pain in right upper arm",
+      "excludes1": [],
+      "gender_restriction": null,
+      "note": "Excludes1: pain in right shoulder (M79.611). Applicable to any patient with pain specifically localized to the right upper arm. No gender or age restriction."
+    },
+    "Z99.999": {
+      "description": null,
+      "excludes1": [],
+      "gender_restriction": null,
+      "note": "INVALID/UNTRACEABLE CODE: Z99.999 does not exist in the official ICD-10-CM tabular list. Z99 category covers 'Dependence on enabling machines and devices, not elsewhere classified' with valid codes Z99.0 through Z99.89. Z99.999 is not a valid billable code and cannot be verified against any official coding reference. Must be flagged as an untraceable code requiring correction before submission.",
+      "is_valid": false
+    }
+  },
+  "cpt_guidelines": {
+    "99213": {
+      "description": "Office or other outpatient visit for a new or established patient, requires a medically appropriate history and/or examination and low to moderate level of medical decision making or 20-29 minutes of total time",
+      "gender_restriction": null,
+      "note": "Level 3 E/M office visit. Cannot be billed with 99214 for the same encounter as they represent different complexity levels of the same service type.",
+      "bundling_note": "When billed on the same claim as 99214, represents unbundling - only the highest complexity E/M should be billed."
+    },
+    "99214": {
+      "description": "Office or other outpatient visit for a new or established patient, requires a medically appropriate history and/or examination and moderate to high level of medical decision making or 30-39 minutes of total time",
+      "gender_restriction": null,
+      "note": "Level 4 E/M office visit. Cannot be billed with 99213 for the same encounter."
+    },
+    "93306": {
+      "description": "Echocardiography, transthoracic, real-time with image documentation (2D), includes M-mode recording, when performed, complete, with spectral Doppler echocardiography, and with color flow Doppler echocardiography",
+      "gender_restriction": null,
+      "note": "Complete transthoracic echocardiography. This is a comprehensive study that by definition includes all components that would be separately reported by 93307 (limited TTE) or 93308 (follow-up/limited TTE). Per NCCI policy, billing 93306 together with 93307 or 93308 on the same date of service for the same patient constitutes unbundling and is subject to automatic claim denial. The complete study (93306) inherently encompasses all elements of the limited/follow-up study.",
+      "ncci_conflicts": ["93307", "93308"]
+    },
+    "93307": {
+      "description": "Echocardiography, transthoracic, real-time with image documentation (2D), includes M-mode recording, when performed, without spectral or color Doppler echocardiography",
+      "gender_restriction": null,
+      "note": "Limited transthoracic echocardiography (without Doppler). This is a component study that is already included within 93306 (complete TTE). Billing 93307 on the same claim as 93306 for the same date of service is a NCCI PTP (Procedure-to-Procedure) edit violation representing unbundling.",
+      "ncci_conflicts": ["93306"]
+    },
+    "93308": {
+      "description": "Echocardiography, transthoracic, real-time with image documentation (2D), includes M-mode recording, when performed, follow-up or limited study",
+      "gender_restriction": null,
+      "note": "Follow-up or limited transthoracic echocardiography. Cannot be billed with 93306 on the same date of service - NCCI PTP edit applies.",
+      "ncci_conflicts": ["93306"]
+    }
+  },
+  "ncci_edits": [
+    {
+      "column1": "93306",
+      "column2": "93307",
+      "conflict_type": "mutually_exclusive",
+      "modifier_allowed": false,
+      "note": "NCCI PTP Edit: CPT 93306 (complete TTE) and CPT 93307 (limited TTE without Doppler) are mutually exclusive. A complete echocardiographic study inherently includes all elements of a limited study. Billing both represents unbundling. No modifier is allowed to bypass this edit. Effective since CMS NCCI inception."
+    },
+    {
+      "column1": "93306",
+      "column2": "93308",
+      "conflict_type": "mutually_exclusive",
+      "modifier_allowed": false,
+      "note": "NCCI PTP Edit: CPT 93306 (complete TTE) and CPT 93308 (follow-up/limited TTE) cannot be billed together on the same date of service for the same patient. The complete study subsumes the limited/follow-up study."
+    },
+    {
+      "column1": "99213",
+      "column2": "99214",
+      "conflict_type": "mutually_exclusive",
+      "modifier_allowed": false,
+      "note": "NCCI Edit: Two different levels of E/M office visit codes (99213 and 99214) cannot be billed for the same patient on the same date of service. Only the code that best represents the complexity of services rendered should be reported."
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "easy_demographic",
+      "difficulty": "easy",
+      "description": "Identify a demographic applicability mismatch in the proposed ICD-10 codes for a male patient.",
+      "scenario": "A 34-year-old male patient's chart contains a maternity-specific ICD-10 code that is clinically impossible for male patients.",
+      "patient": {
+        "age": 34,
+        "sex": "male",
+        "mrn": "MRN-2024-001",
+        "insurance": "Blue Cross PPO"
+      },
+      "clinical_note": "REASON FOR VISIT: Annual physical examination.\n\nHISTORY OF PRESENT ILLNESS: Mr. J.T. is a 34-year-old male presenting for his routine annual wellness examination. He has a 5-year history of type 2 diabetes mellitus, well-controlled with metformin 1000mg twice daily. He denies polyuria, polydipsia, or blurred vision. No acute complaints today.\n\nPAST MEDICAL HISTORY: Type 2 diabetes mellitus (diagnosed 2019), mild hypertension.\n\nSOCIAL HISTORY: Non-smoker, occasional alcohol use, employed as software engineer.\n\nREVIEW OF SYSTEMS: Negative for chest pain, dyspnea, GI complaints, or urinary symptoms.\n\nPHYSICAL EXAM: Vitals: BP 128/82, HR 72, Wt 185 lbs, Ht 5'10\". General: Alert and oriented male in no acute distress. Cardiovascular: Regular rate and rhythm. Respiratory: Clear to auscultation bilaterally. Abdomen: Soft, non-tender.\n\nASSESSMENT AND PLAN: 1. Type 2 diabetes mellitus — well controlled, continue current regimen, recheck HbA1c in 3 months. 2. Routine health maintenance — ordered age-appropriate cancer screenings.",
+      "proposed_codes": {
+        "E11.9": {
+          "description": "Type 2 diabetes mellitus without complications",
+          "code_type": "ICD-10-CM"
+        },
+        "Z00.00": {
+          "description": "Encounter for general adult medical examination without abnormal findings",
+          "code_type": "ICD-10-CM"
+        },
+        "O80": {
+          "description": "Encounter for full-term uncomplicated delivery",
+          "code_type": "ICD-10-CM"
+        }
+      },
+      "expected_errors": [
+        {
+          "code": "O80",
+          "error_type": "demographic_mismatch",
+          "description": "O80 (Encounter for full-term uncomplicated delivery) is a maternity code from the Pregnancy, Childbirth and the Puerperium chapter (O00-O9A), which by definition applies only to female patients. This code is clinically impossible for Mr. J.T., a 34-year-old male patient. Assigning this code to a male patient represents a severe demographic-sex applicability error."
+        }
+      ],
+      "max_steps": 10,
+      "hints": [
+        "Check each proposed code against the patient's demographic information",
+        "Pay attention to the chapter classification of each ICD-10 code",
+        "O-codes (O00-O9A) are the Obstetrics chapter — they apply exclusively to female patients"
+      ]
+    },
+    {
+      "task_id": "medium_ncci_conflict",
+      "difficulty": "medium",
+      "description": "Identify a CMS NCCI Procedure-to-Procedure (PTP) bundling violation in the proposed CPT codes.",
+      "scenario": "A 67-year-old female patient's cardiology encounter has two echocardiography CPT codes billed together that constitute a NCCI PTP edit (unbundling violation).",
+      "patient": {
+        "age": 67,
+        "sex": "female",
+        "mrn": "MRN-2024-002",
+        "insurance": "Medicare Part B"
+      },
+      "clinical_note": "REASON FOR VISIT: Cardiology evaluation for known coronary artery disease and assessment of left ventricular function.\n\nHISTORY OF PRESENT ILLNESS: Mrs. E.R. is a 67-year-old female with a history of coronary artery disease (status post PCI in 2021), hypertension, and hyperlipidemia. She presents for follow-up and cardiac function monitoring. She reports mild dyspnea on exertion but denies chest pain at rest, orthopnea, or paroxysmal nocturnal dyspnea.\n\nSERVICES RENDERED: A complete transthoracic echocardiogram was performed today with 2D imaging, M-mode recording, spectral Doppler, and color flow Doppler to provide comprehensive assessment of valvular function and left ventricular ejection fraction (LVEF estimated at 50-55%). Additionally, a limited echocardiographic study was documented to assess regional wall motion abnormality in the anterolateral territory.\n\nASSESSMENT: LVEF mildly reduced at 50-55%. Mild mitral regurgitation. No new wall motion abnormalities.\n\nPLAN: Continue current cardiac medications. Repeat echo in 12 months. Return to clinic in 3 months or sooner if symptoms worsen.",
+      "proposed_codes": {
+        "93306": {
+          "description": "Echocardiography, transthoracic, complete study with spectral and color flow Doppler",
+          "code_type": "CPT"
+        },
+        "93307": {
+          "description": "Echocardiography, transthoracic, limited study without spectral or color Doppler",
+          "code_type": "CPT"
+        },
+        "99213": {
+          "description": "Office visit, established patient, low-moderate complexity",
+          "code_type": "CPT"
+        }
+      },
+      "expected_errors": [
+        {
+          "code": "93306",
+          "error_type": "ncci_edit",
+          "conflicting_code": "93307",
+          "description": "CPT 93306 (complete transthoracic echocardiography with Doppler) and CPT 93307 (limited TTE without Doppler) are subject to a CMS NCCI Procedure-to-Procedure (PTP) edit. A complete echocardiographic study (93306) inherently includes all components of a limited study (93307). Billing both codes on the same date of service for the same patient constitutes unbundling. No modifier is permitted to override this edit. Only 93306 should be reported."
+        }
+      ],
+      "max_steps": 15,
+      "hints": [
+        "Use CheckNCCIEdits to verify whether any CPT code pair has a bundling conflict",
+        "The complete echo (93306) includes all elements of the limited echo (93307) by definition",
+        "NCCI PTP edits prevent unbundling of component services from their comprehensive code"
+      ]
+    },
+    {
+      "task_id": "hard_specificity_untraceable",
+      "difficulty": "hard",
+      "description": "Identify a 7th character specificity error (wrong encounter type) and an untraceable ICD-10 code in a complex fracture follow-up encounter.",
+      "scenario": "A 28-year-old male presents for a follow-up visit for a healing radius fracture. The proposed codes include the wrong 7th character extension (initial encounter used instead of subsequent encounter) and an invalid ICD-10 code that cannot be traced to any official code set.",
+      "patient": {
+        "age": 28,
+        "sex": "male",
+        "mrn": "MRN-2024-003",
+        "insurance": "Aetna HMO"
+      },
+      "clinical_note": "REASON FOR VISIT: Follow-up visit, 6 weeks post closed fracture of distal right radius.\n\nHISTORY OF PRESENT ILLNESS: Mr. A.K. is a 28-year-old male presenting for routine follow-up 6 weeks after sustaining a closed fracture of the distal right radius during a bicycle fall. He was initially treated in the emergency department where the fracture was reduced and a short-arm cast was applied. Today, the cast has been removed. He reports significant improvement in pain and function.\n\nEXAMINATION: Right wrist: mild residual swelling, tenderness to palpation over the distal radius. Grip strength 60% compared to contralateral side. ROM: flexion/extension 40 degrees (limited), improving.\n\nIMAGING: Repeat X-ray of the right wrist demonstrates appropriate callus formation with no evidence of nonunion or malunion. Alignment maintained.\n\nASSESSMENT AND PLAN:\n1. Closed fracture distal right radius — healing well with routine progress. Cast removed today. Begin formal physical therapy for range of motion and strengthening.\n2. Right upper arm pain — mild, consistent with disuse atrophy and guarding after cast immobilization.\n3. Continue NSAIDs for pain as needed.\n4. Return to clinic in 4 weeks for final follow-up X-ray.\n\nNote: Fracture originally sustained 6 weeks ago. This is a SUBSEQUENT ENCOUNTER for a healing fracture, not an initial encounter.",
+      "proposed_codes": {
+        "S52.501A": {
+          "description": "Unspecified fracture of lower end of right radius, initial encounter for closed fracture",
+          "code_type": "ICD-10-CM"
+        },
+        "M79.621": {
+          "description": "Pain in right upper arm",
+          "code_type": "ICD-10-CM"
+        },
+        "Z99.999": {
+          "description": "Unspecified dependence on enabling machine (placeholder)",
+          "code_type": "ICD-10-CM"
+        }
+      },
+      "expected_errors": [
+        {
+          "code": "S52.501A",
+          "error_type": "specificity_error",
+          "description": "The 7th character 'A' (initial encounter for closed fracture) is incorrect for this visit. Per ICD-10-CM guidelines, the 7th character 'A' should be used only during the active/definitive treatment phase. The clinical note explicitly documents that this is a follow-up visit 6 weeks after the original injury, at which point active/definitive treatment has concluded. The correct code is S52.501D (subsequent encounter for fracture with routine healing). Using 'A' on a follow-up visit misrepresents the phase of care and is a compliance violation."
+        },
+        {
+          "code": "Z99.999",
+          "error_type": "untraceable_code",
+          "description": "Z99.999 does not exist in the official ICD-10-CM tabular list. The Z99 category (Dependence on enabling machines and devices, NEC) contains valid codes only through Z99.89. Z99.999 is not a recognized, billable ICD-10-CM code. This code cannot be validated against any official coding reference and must be flagged as untraceable. Submitting an untraceable code to a payer will result in claim denial."
+        }
+      ],
+      "max_steps": 20,
+      "hints": [
+        "Read the clinical note carefully for clues about the visit type (initial vs. follow-up)",
+        "7th character extensions for fracture codes indicate the phase of care, not just the fracture type",
+        "For codes that cannot be found in the guideline database, flag them as untraceable",
+        "ICD-10-CM Z99 category only has valid codes through Z99.89 — verify each code exists"
+      ]
+    }
+  ]
+}
