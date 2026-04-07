@@ -2,11 +2,11 @@
 Inference Script — Medical Coding Auditor Environment
 =======================================================
 MANDATORY ENVIRONMENT VARIABLES:
-    API_BASE_URL   The API endpoint for the LLM.
-    MODEL_NAME     The model identifier to use for inference.
-    HF_TOKEN       Your Hugging Face / API key (used as API key for LLM calls).
-    IMAGE_NAME     (optional) Docker image name if launching from Docker.
-    ENV_BASE_URL   (optional) Base URL of the running env server (default: http://localhost:7860).
+    API_BASE_URL      The API endpoint for the LLM (default: "<your-active-endpoint>").
+    MODEL_NAME        The model identifier to use for inference (default: "<your-active-model>").
+    HF_TOKEN          Your Hugging Face / API key (used as API key for LLM calls). No default.
+    LOCAL_IMAGE_NAME  (optional) Docker image name if launching env via from_docker_image().
+    ENV_BASE_URL      (optional) Base URL of the running env server (default: http://localhost:7860).
 
 STDOUT FORMAT (required by hackathon spec):
     [START] task=<task_id> env=medical_coding model=<model_name>
@@ -25,10 +25,13 @@ from openai import OpenAI
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-IMAGE_NAME = os.getenv("IMAGE_NAME")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+API_BASE_URL = os.getenv("API_BASE_URL", "<your-active-endpoint>")
+MODEL_NAME = os.getenv("MODEL_NAME", "<your-active-model>")
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+# Optional — if you use from_docker_image():
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
 BENCHMARK = "medical_coding"
 
@@ -390,9 +393,15 @@ async def run_task_http(
 
 async def main() -> None:
     """Run baseline inference across all three tasks."""
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
-    base_url = ENV_BASE_URL.rstrip("/")
+    # If LOCAL_IMAGE_NAME is set, launch env from Docker image
+    if LOCAL_IMAGE_NAME:
+        from client import MedicalCodingEnv
+        env = await MedicalCodingEnv.from_docker_image(LOCAL_IMAGE_NAME)
+        base_url = env.base_url.rstrip("/")
+    else:
+        base_url = ENV_BASE_URL.rstrip("/")
 
     # Try WebSocket mode first, fall back to HTTP-local mode
     ws_url = base_url.replace("http://", "ws://").replace("https://", "wss://") + "/ws"
