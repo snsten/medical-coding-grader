@@ -51,15 +51,6 @@ SUCCESS_THRESHOLD = 0.5
 TEMPERATURE = 0.2
 MAX_TOKENS = 400
 
-# Max possible reward per task (used to normalize score to [0, 1])
-# = max_steps * max_per_step_reward + grader_score_max(1.0)
-# max per-step reward is 0.3 (for a correct NCCI/Excludes1 flag)
-MAX_REWARDS: Dict[str, float] = {
-    "easy_demographic": 10 * 0.3 + 1.0,
-    "medium_ncci_conflict": 15 * 0.3 + 1.0,
-    "hard_specificity_untraceable": 20 * 0.3 + 1.0,
-}
-
 # ---------------------------------------------------------------------------
 # Logging (required stdout format)
 # ---------------------------------------------------------------------------
@@ -231,12 +222,11 @@ async def run_task_websocket(
 ) -> float:
     """
     Run one task episode over a WebSocket connection to maintain state.
-    Returns normalized score in [0.0, 1.0].
+    Returns the grader_score from the terminal observation (already in [0.0, 1.0]).
     """
     import websockets
 
     max_steps = MAX_STEPS_PER_TASK[task_id]
-    max_reward = MAX_REWARDS[task_id]
     rewards: List[float] = []
     steps_taken = 0
     score = 0.0
@@ -285,10 +275,12 @@ async def run_task_websocket(
                 )
 
                 if done:
+                    # Use grader_score from terminal observation as the score
+                    grader = obs.get("grader_score") if isinstance(obs, dict) else None
+                    if grader is not None:
+                        score = float(grader)
                     break
 
-        total_reward = sum(rewards)
-        score = min(max(total_reward / max_reward, 0.0), 1.0)
         success = score >= SUCCESS_THRESHOLD
 
     except Exception as exc:
@@ -328,7 +320,6 @@ async def run_task_http(
 
     env = MedicalCodingEnvironment()
     max_steps = MAX_STEPS_PER_TASK[task_id]
-    max_reward = MAX_REWARDS[task_id]
     rewards: List[float] = []
     steps_taken = 0
     score = 0.0
@@ -373,14 +364,15 @@ async def run_task_http(
             )
 
             if done:
+                # Use grader_score from terminal observation as the score
+                if step_obs.grader_score is not None:
+                    score = float(step_obs.grader_score)
                 break
 
     except Exception as exc:
         print(f"[DEBUG] HTTP task {task_id} error: {exc}", flush=True)
 
     finally:
-        total_reward = sum(rewards)
-        score = min(max(total_reward / max_reward, 0.0), 1.0)
         success = score >= SUCCESS_THRESHOLD
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 

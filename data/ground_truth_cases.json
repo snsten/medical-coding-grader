@@ -156,7 +156,8 @@
         {
           "code": "O80",
           "error_type": "demographic_mismatch",
-          "description": "O80 (Encounter for full-term uncomplicated delivery) is a maternity code from the Pregnancy, Childbirth and the Puerperium chapter (O00-O9A), which by definition applies only to female patients. This code is clinically impossible for Mr. J.T., a 34-year-old male patient. Assigning this code to a male patient represents a severe demographic-sex applicability error."
+          "description": "O80 (Encounter for full-term uncomplicated delivery) is a maternity code from the Pregnancy, Childbirth and the Puerperium chapter (O00-O9A), which by definition applies only to female patients. This code is clinically impossible for Mr. J.T., a 34-year-old male patient. Assigning this code to a male patient represents a severe demographic-sex applicability error.",
+          "key_terms": ["female", "male", "maternity", "obstetric", "delivery", "sex", "gender", "demographic"]
         }
       ],
       "max_steps": 10,
@@ -197,7 +198,8 @@
           "code": "93306",
           "error_type": "ncci_edit",
           "conflicting_code": "93307",
-          "description": "CPT 93306 (complete transthoracic echocardiography with Doppler) and CPT 93307 (limited TTE without Doppler) are subject to a CMS NCCI Procedure-to-Procedure (PTP) edit. A complete echocardiographic study (93306) inherently includes all components of a limited study (93307). Billing both codes on the same date of service for the same patient constitutes unbundling. No modifier is permitted to override this edit. Only 93306 should be reported."
+          "description": "CPT 93306 (complete transthoracic echocardiography with Doppler) and CPT 93307 (limited TTE without Doppler) are subject to a CMS NCCI Procedure-to-Procedure (PTP) edit. A complete echocardiographic study (93306) inherently includes all components of a limited study (93307). Billing both codes on the same date of service for the same patient constitutes unbundling. No modifier is permitted to override this edit. Only 93306 should be reported.",
+          "key_terms": ["bundling", "unbundling", "NCCI", "PTP", "complete", "limited", "component", "comprehensive", "93307"]
         }
       ],
       "max_steps": 15,
@@ -237,12 +239,14 @@
         {
           "code": "S52.501A",
           "error_type": "specificity_error",
-          "description": "The 7th character 'A' (initial encounter for closed fracture) is incorrect for this visit. Per ICD-10-CM guidelines, the 7th character 'A' should be used only during the active/definitive treatment phase. The clinical note explicitly documents that this is a follow-up visit 6 weeks after the original injury, at which point active/definitive treatment has concluded. The correct code is S52.501D (subsequent encounter for fracture with routine healing). Using 'A' on a follow-up visit misrepresents the phase of care and is a compliance violation."
+          "description": "The 7th character 'A' (initial encounter for closed fracture) is incorrect for this visit. Per ICD-10-CM guidelines, the 7th character 'A' should be used only during the active/definitive treatment phase. The clinical note explicitly documents that this is a follow-up visit 6 weeks after the original injury, at which point active/definitive treatment has concluded. The correct code is S52.501D (subsequent encounter for fracture with routine healing). Using 'A' on a follow-up visit misrepresents the phase of care and is a compliance violation.",
+          "key_terms": ["7th character", "subsequent", "initial", "follow-up", "healing", "S52.501D", "encounter type", "phase of care"]
         },
         {
           "code": "Z99.999",
           "error_type": "untraceable_code",
-          "description": "Z99.999 does not exist in the official ICD-10-CM tabular list. The Z99 category (Dependence on enabling machines and devices, NEC) contains valid codes only through Z99.89. Z99.999 is not a recognized, billable ICD-10-CM code. This code cannot be validated against any official coding reference and must be flagged as untraceable. Submitting an untraceable code to a payer will result in claim denial."
+          "description": "Z99.999 does not exist in the official ICD-10-CM tabular list. The Z99 category (Dependence on enabling machines and devices, NEC) contains valid codes only through Z99.89. Z99.999 is not a recognized, billable ICD-10-CM code. This code cannot be validated against any official coding reference and must be flagged as untraceable. Submitting an untraceable code to a payer will result in claim denial.",
+          "key_terms": ["invalid", "untraceable", "not exist", "Z99", "not found", "official", "billable"]
         }
       ],
       "max_steps": 20,

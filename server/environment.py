@@ -5,15 +5,19 @@ The agent plays the role of a Medical Coding Auditor performing a pre-bill revie
 It validates a proposed set of ICD-10 and CPT codes against a clinical note and
 patient demographics without assigning new codes.
 
-Reward shaping follows the problem specification:
+Reward shaping (dense, multi-signal):
   +0.10  QueryGuideline on a code present in the proposed set
   +0.30  FlagError that correctly identifies an NCCI edit or Excludes1 conflict
   +0.20  FlagError that correctly identifies a demographic mismatch,
          specificity error, or untraceable code
+  +0.05  Justification quality bonus (key terms from expected error description)
   -0.10  Repeated QueryGuideline / CheckNCCIEdits on an already-queried code/pair
-  -0.20  FlagError with incorrect error_type (false positive classification)
+  -0.10  FlagError with correct code but wrong error_type classification
+  -0.20  FlagError on a code with no expected error (false positive)
   -0.50  Any action that references a code NOT in the proposed set (hallucination)
-  +final  grader_score added as terminal reward on SubmitAudit
+  +final Terminal reward on SubmitAudit:
+         grader_score - 0.15 * false_positives + 0.1 * (max_steps - steps) / max_steps
+  Auto-termination: episode ends with auto-submit and -0.1 penalty at max_steps
 """
 
 from __future__ import annotations
@@ -53,29 +57,34 @@ def _load_data() -> Dict[str, Any]:
 def _grade_audit(
     draft_report: List[Dict[str, Any]],
     expected_errors: List[Dict[str, Any]],
-) -> float:
+) -> tuple[float, int]:
     """
     Compare the agent's submitted audit report against the ground truth.
 
     Scoring logic:
     - For each expected error, check if the agent correctly flagged it.
-    - A flag is "correct" if both the code AND error_type match.
+    - A flag is "correct" if both the code AND error_type match → 1.0 credit.
     - Partial credit (0.5x) if the correct code is flagged but with a wrong error_type.
-    - Over-flagging (false positives) is not penalized in the final score
-      (the per-step -0.20 reward already penalizes false positives during the episode).
-    - Final score = sum(credit for each expected error) / len(expected_errors)
+    - False positives (flags on codes with no expected error) are counted and penalized
+      in the terminal reward calculation.
+    - Final base score = sum(credit for each expected error) / len(expected_errors)
 
-    Returns a float in [0.0, 1.0].
+    Returns (base_score, false_positive_count).
     """
     if not expected_errors:
-        return 1.0
+        return 1.0, 0
 
-    flagged_by_code = {}
+    expected_codes = {e["code"] for e in expected_errors}
+
+    flagged_by_code: Dict[str, List[str]] = {}
+    false_positives = 0
     for entry in draft_report:
         code = entry.get("code", "")
         if code not in flagged_by_code:
             flagged_by_code[code] = []
         flagged_by_code[code].append(entry.get("error_type", ""))
+        if code not in expected_codes:
+            false_positives += 1
 
     total_credit = 0.0
     for expected in expected_errors:
@@ -83,19 +92,17 @@ def _grade_audit(
         exp_error_type = expected["error_type"]
 
         if exp_code not in flagged_by_code:
-            # Code not flagged at all — no credit
             continue
 
         agent_error_types = flagged_by_code[exp_code]
 
         if exp_error_type in agent_error_types:
-            # Full credit: correct code + correct error_type
             total_credit += 1.0
         else:
-            # Partial credit: correct code, wrong error_type classification
             total_credit += 0.5
 
-    return round(total_credit / len(expected_errors), 4)
+    base_score = round(total_credit / len(expected_errors), 4)
+    return base_score, false_positives
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +199,7 @@ class MedicalCodingEnvironment(Environment):
         Execute one auditor action and return the resulting observation.
 
         Dense reward shaping is applied per the specification.
+        Auto-terminates at max_steps with a timeout penalty.
         """
         if self._done:
             return self._build_observation(
@@ -202,6 +210,10 @@ class MedicalCodingEnvironment(Environment):
             )
 
         self._state.step_count += 1
+
+        # Auto-termination: if this is the last allowed step, force submit
+        if self._state.step_count >= self._max_steps and action.action_type != "submit_audit":
+            return self._handle_auto_termination()
 
         # Route to the appropriate handler
         handler = {
@@ -363,7 +375,7 @@ class MedicalCodingEnvironment(Environment):
 
         # Evaluate correctness against ground truth
         expected_errors = {e["code"]: e["error_type"] for e in self._task["expected_errors"]}
-        reward, feedback = self._score_flag(code, error_type, expected_errors)
+        reward, feedback = self._score_flag(code, error_type, justification, expected_errors)
 
         # Record in draft report
         self._draft_report.append({
@@ -381,16 +393,51 @@ class MedicalCodingEnvironment(Environment):
 
     def _handle_submit_audit(self, action: MedicalCodingAction) -> MedicalCodingObservation:
         """End the episode and grade the submitted audit report."""
+        return self._finalize_episode(timeout=False)
+
+    def _handle_auto_termination(self) -> MedicalCodingObservation:
+        """Auto-submit when max_steps is reached. Applies a timeout penalty."""
+        return self._finalize_episode(timeout=True)
+
+    def _finalize_episode(self, timeout: bool) -> MedicalCodingObservation:
+        """
+        Grade the audit and compute the terminal reward.
+
+        Terminal reward = base_grader_score
+                        - 0.15 * false_positive_count
+                        + efficiency_bonus (0.1 * remaining_steps / max_steps)
+                        - timeout_penalty (0.1 if auto-terminated)
+
+        Clamped to [0.0, 1.0].
+        """
         expected_errors = self._task["expected_errors"]
-        grader_score = _grade_audit(self._draft_report, expected_errors)
-        self._grader_score = grader_score
+        base_score, fp_count = _grade_audit(self._draft_report, expected_errors)
+
+        # Efficiency bonus: reward finishing early
+        steps_used = self._state.step_count
+        efficiency_bonus = 0.1 * max(self._max_steps - steps_used, 0) / self._max_steps
+
+        # False positive penalty
+        fp_penalty = 0.15 * fp_count
+
+        # Timeout penalty
+        timeout_penalty = 0.1 if timeout else 0.0
+
+        terminal_reward = base_score - fp_penalty + efficiency_bonus - timeout_penalty
+        terminal_reward = round(max(min(terminal_reward, 1.0), 0.0), 4)
+
+        self._grader_score = terminal_reward
         self._done = True
 
         errors_found = len(self._draft_report)
         errors_expected = len(expected_errors)
 
         summary_lines = [
-            f"AUDIT SUBMITTED. Grader score: {grader_score:.2f}",
+            f"AUDIT {'AUTO-SUBMITTED (max steps reached)' if timeout else 'SUBMITTED'}.",
+            f"Base grader score: {base_score:.2f} | Efficiency bonus: +{efficiency_bonus:.2f}"
+            + (f" | Timeout penalty: -{timeout_penalty:.2f}" if timeout else "")
+            + (f" | False positive penalty: -{fp_penalty:.2f}" if fp_count > 0 else ""),
+            f"Final score: {terminal_reward:.2f}",
             f"Errors flagged: {errors_found} | Errors expected: {errors_expected}",
         ]
 
@@ -402,16 +449,14 @@ class MedicalCodingEnvironment(Environment):
             status = "FOUND" if flagged else "MISSED"
             summary_lines.append(f"  [{status}] {exp['code']} ({exp['error_type']})")
 
-        false_positives = [
-            e for e in self._draft_report
-            if not any(exp["code"] == e["code"] and exp["error_type"] == e["error_type"] for exp in expected_errors)
-        ]
-        if false_positives:
-            summary_lines.append(f"  False positives: {[e['code'] for e in false_positives]}")
+        if fp_count > 0:
+            expected_codes = {e["code"] for e in expected_errors}
+            fp_entries = [e["code"] for e in self._draft_report if e["code"] not in expected_codes]
+            summary_lines.append(f"  False positives: {fp_entries}")
 
         return self._build_observation(
             tool_result="\n".join(summary_lines),
-            reward=grader_score,  # terminal reward = grader score
+            reward=terminal_reward,
             done=True,
         )
 
@@ -477,10 +522,32 @@ class MedicalCodingEnvironment(Environment):
             False,
         )
 
+    def _justification_quality_bonus(self, code: str, justification: str) -> float:
+        """
+        Award a small bonus if the justification contains key terms from the
+        expected error description. Rewards reasoning quality, not just classification.
+
+        Returns bonus in [0.0, 0.05].
+        """
+        expected_errors = self._task.get("expected_errors", [])
+        for exp in expected_errors:
+            if exp["code"] != code:
+                continue
+            key_terms = exp.get("key_terms", [])
+            if not key_terms:
+                return 0.0
+            justification_lower = justification.lower()
+            hits = sum(1 for t in key_terms if t.lower() in justification_lower)
+            # Require at least 2 key terms for the bonus
+            if hits >= 2:
+                return 0.05
+        return 0.0
+
     def _score_flag(
         self,
         code: str,
         error_type: str,
+        justification: str,
         expected_errors: Dict[str, str],
     ) -> tuple[float, str]:
         """
@@ -498,19 +565,24 @@ class MedicalCodingEnvironment(Environment):
         correct_error_type = expected_errors[code]
         if error_type == correct_error_type:
             # Correct code AND correct error_type
+            justification_bonus = self._justification_quality_bonus(code, justification)
             if error_type in ("ncci_edit", "excludes1_conflict"):
-                return +0.3, (
+                base = 0.3
+                return base + justification_bonus, (
                     f"Correct! '{code}' has a '{error_type}' error. "
                     f"Full reward for NCCI/Excludes1 conflict identification."
+                    + (f" Justification quality bonus: +{justification_bonus:.2f}" if justification_bonus > 0 else "")
                 )
             else:
-                return +0.2, (
+                base = 0.2
+                return base + justification_bonus, (
                     f"Correct! '{code}' has a '{error_type}' error. "
                     f"Reward for accurate error classification."
+                    + (f" Justification quality bonus: +{justification_bonus:.2f}" if justification_bonus > 0 else "")
                 )
         else:
-            # Correct code but wrong error_type classification
-            return 0.0, (
+            # Correct code but wrong error_type classification — small negative
+            return -0.1, (
                 f"Code '{code}' does have an error, but the error_type '{error_type}' "
                 f"does not match the expected classification. "
                 f"Re-examine the coding guidelines for this code."
