@@ -11,21 +11,31 @@ Reward shaping (dense, multi-signal):
   +0.20  FlagError that correctly identifies a demographic mismatch,
          specificity error, or untraceable code
   +0.05  Justification quality bonus (key terms from expected error description)
+  +0.05  Investigation coherence bonus (queried code's guideline before flagging it)
+  -0.05  Flag without investigation penalty (flagging a code without querying first)
   -0.10  Repeated QueryGuideline / CheckNCCIEdits on an already-queried code/pair
   -0.10  FlagError with correct code but wrong error_type classification
   -0.20  FlagError on a code with no expected error (false positive)
   -0.50  Any action that references a code NOT in the proposed set (hallucination)
   +final Terminal reward on SubmitAudit:
          grader_score - 0.15 * false_positives + 0.1 * (max_steps - steps) / max_steps
+         + 0.05 thorough_review bonus (queried all proposed codes before submitting)
   Auto-termination: episode ends with auto-submit and -0.1 penalty at max_steps
+
+Partial observability mode:
+  When enabled via reset(partial_observability=True), the clinical note is
+  progressively revealed as the agent queries codes. Initially only the
+  REASON FOR VISIT section is visible. Each query_guideline reveals the
+  next section. This models real-world information gathering.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from uuid import uuid4
 
 from openenv.core.env_server.interfaces import Environment
@@ -48,6 +58,56 @@ _DATA_FILE = Path(__file__).parent.parent / "data" / "ground_truth_cases.json"
 def _load_data() -> Dict[str, Any]:
     with open(_DATA_FILE, "r", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+# ---------------------------------------------------------------------------
+# Partial Observability — Clinical Note Section Parser
+# ---------------------------------------------------------------------------
+
+# Common clinical note section headers
+_SECTION_PATTERN = re.compile(
+    r"^(REASON FOR VISIT|HISTORY OF PRESENT ILLNESS|PAST MEDICAL HISTORY|"
+    r"SOCIAL HISTORY|REVIEW OF SYSTEMS|MEDICATIONS|PHYSICAL EXAM|"
+    r"EXAMINATION|IMAGING|SPIROMETRY[^:]*|SERVICES RENDERED|"
+    r"ENDOCRINOLOGY ASSESSMENT|CARDIOLOGY ASSESSMENT|RIGHT ARM|"
+    r"ASSESSMENT AND PLAN|ASSESSMENT|PLAN)\s*:",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def _parse_note_sections(clinical_note: str) -> List[tuple[str, str]]:
+    """
+    Parse a clinical note into (header, body) sections.
+    Returns at least one section. Unparseable notes return as a single section.
+    """
+    matches = list(_SECTION_PATTERN.finditer(clinical_note))
+    if not matches:
+        return [("CLINICAL NOTE", clinical_note)]
+
+    sections: List[tuple[str, str]] = []
+    for i, match in enumerate(matches):
+        header = match.group(1).upper()
+        start = match.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(clinical_note)
+        body = clinical_note[start:end].strip()
+        sections.append((header, body))
+
+    return sections
+
+
+def _build_visible_note(
+    sections: List[tuple[str, str]],
+    revealed_count: int,
+) -> str:
+    """Build the currently visible clinical note from revealed sections."""
+    if not sections:
+        return ""
+    visible = sections[:revealed_count]
+    hidden_count = len(sections) - revealed_count
+    parts = [f"{header}: {body}" for header, body in visible]
+    if hidden_count > 0:
+        parts.append(f"\n[{hidden_count} more section(s) not yet revealed — query codes to investigate further]")
+    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -148,23 +208,29 @@ class MedicalCodingEnvironment(Environment):
         self._done: bool = False
         self._grader_score: Optional[float] = None
         self._max_steps: int = 20
+        # Feature F: investigation strategy tracking
+        self._action_history: List[tuple[str, Optional[str]]] = []
+        # Feature E: partial observability
+        self._partial_observability: bool = False
+        self._note_sections: List[tuple[str, str]] = []  # (header, body) pairs
+        self._revealed_section_count: int = 0
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def reset(self, task_id: Optional[str] = None, **kwargs: Any) -> MedicalCodingObservation:  # type: ignore[override]
+    def reset(self, task_id: Optional[str] = None, partial_observability: Optional[bool] = None, **kwargs: Any) -> MedicalCodingObservation:  # type: ignore[override]
         """
         Reset the environment for a new episode.
 
         Args:
-            task_id: Which task to load. If None, cycles through tasks in order
-                     based on the episode count. Valid values:
-                     'easy_demographic', 'medium_ncci_conflict',
-                     'hard_specificity_untraceable'
+            task_id: Which task to load. If None, cycles through tasks in order.
+                     Use 'random' for a procedurally generated case.
+            partial_observability: If True, the clinical note is progressively
+                     revealed as the agent queries codes. Default: False.
 
         Returns:
-            Initial MedicalCodingObservation with the full case context.
+            Initial MedicalCodingObservation with the case context.
         """
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self._draft_report = []
@@ -172,18 +238,35 @@ class MedicalCodingEnvironment(Environment):
         self._pairs_checked = []
         self._done = False
         self._grader_score = None
+        self._action_history = []
 
         # Select task
         tasks = {t["task_id"]: t for t in self._data["tasks"]}
-        if task_id and task_id in tasks:
+        if task_id and task_id.startswith("random"):
+            from data.case_generator import generate_random_task
+            difficulty = task_id.split("_", 1)[1] if "_" in task_id else None
+            self._task = generate_random_task(
+                self._data, self._state.episode_id, difficulty=difficulty,
+            )
+        elif task_id and task_id in tasks:
             self._task = tasks[task_id]
         else:
-            # Default: cycle through tasks based on episode count hash
             idx = hash(self._state.episode_id) % len(self._TASK_ORDER)
             self._task = tasks[self._TASK_ORDER[idx]]
 
         self._proposed_codes = self._task["proposed_codes"]
         self._max_steps = self._task["max_steps"]
+
+        # Partial observability setup
+        self._partial_observability = bool(partial_observability)
+        if self._partial_observability:
+            self._note_sections = _parse_note_sections(self._task["clinical_note"])
+            self._revealed_section_count = 1  # start with just REASON FOR VISIT
+        else:
+            self._note_sections = []
+            self._revealed_section_count = 0
+
+        po_note = " [PARTIAL OBSERVABILITY: clinical note will be revealed as you investigate.]" if self._partial_observability else ""
 
         return self._build_observation(
             tool_result=(
@@ -191,6 +274,7 @@ class MedicalCodingEnvironment(Environment):
                 f"({self._task['difficulty']} difficulty). "
                 f"Review the patient demographics, clinical note, and proposed codes. "
                 f"Use query_guideline, check_ncci_edits, flag_error, then submit_audit."
+                f"{po_note}"
             ),
             reward=0.0,
             done=False,
@@ -247,12 +331,15 @@ class MedicalCodingEnvironment(Environment):
         """Look up coding guidelines for a specific code."""
         code = action.code
         if not code:
+            self._action_history.append(("query_guideline", None))
             return self._build_observation(
                 tool_result="query_guideline requires a 'code' field.",
                 reward=-0.2,
                 done=False,
                 error="Missing required field: code",
             )
+
+        self._action_history.append(("query_guideline", code))
 
         # Hallucination check — code must be in the proposed set
         if code not in self._proposed_codes:
@@ -280,6 +367,10 @@ class MedicalCodingEnvironment(Environment):
         guideline = self._lookup_guideline(code)
         self._codes_queried.append(code)
 
+        # Partial observability: reveal next section
+        if self._partial_observability and self._revealed_section_count < len(self._note_sections):
+            self._revealed_section_count += 1
+
         return self._build_observation(
             tool_result=guideline,
             reward=0.1,
@@ -289,6 +380,7 @@ class MedicalCodingEnvironment(Environment):
     def _handle_check_ncci_edits(self, action: MedicalCodingAction) -> MedicalCodingObservation:
         """Check CMS NCCI PTP edit table for two codes."""
         code1, code2 = action.code1, action.code2
+        self._action_history.append(("check_ncci_edits", f"{code1}|{code2}"))
         if not code1 or not code2:
             return self._build_observation(
                 tool_result="check_ncci_edits requires both 'code1' and 'code2' fields.",
@@ -340,6 +432,8 @@ class MedicalCodingEnvironment(Environment):
         error_type = action.error_type
         justification = action.justification
 
+        self._action_history.append(("flag_error", code))
+
         if not code or not error_type or not justification:
             missing = [f for f, v in [("code", code), ("error_type", error_type), ("justification", justification)] if not v]
             return self._build_observation(
@@ -378,6 +472,15 @@ class MedicalCodingEnvironment(Environment):
         # Evaluate correctness against ground truth
         expected_errors = {e["code"]: e["error_type"] for e in self._task["expected_errors"]}
         reward, feedback = self._score_flag(code, error_type, justification, expected_errors)
+
+        # Feature F: investigation coherence bonus/penalty
+        investigated = self._was_investigated(code, error_type)
+        if investigated:
+            reward += 0.05
+            feedback += " (Investigation coherence bonus: +0.05)"
+        else:
+            reward -= 0.05
+            feedback += " (No prior investigation of this code: -0.05)"
 
         # Record in draft report
         self._draft_report.append({
@@ -425,7 +528,10 @@ class MedicalCodingEnvironment(Environment):
         # Timeout penalty
         timeout_penalty = 0.1 if timeout else 0.0
 
-        terminal_reward = base_score - fp_penalty + efficiency_bonus - timeout_penalty
+        # Thorough review bonus
+        review_bonus = self._thorough_review_bonus() if not timeout else 0.0
+
+        terminal_reward = base_score - fp_penalty + efficiency_bonus - timeout_penalty + review_bonus
         terminal_reward = round(max(min(terminal_reward, 1.0), 0.0), 4)
 
         self._grader_score = terminal_reward
@@ -437,6 +543,7 @@ class MedicalCodingEnvironment(Environment):
         summary_lines = [
             f"AUDIT {'AUTO-SUBMITTED (max steps reached)' if timeout else 'SUBMITTED'}.",
             f"Base grader score: {base_score:.2f} | Efficiency bonus: +{efficiency_bonus:.2f}"
+            + (f" | Thorough review bonus: +{review_bonus:.2f}" if review_bonus > 0 else "")
             + (f" | Timeout penalty: -{timeout_penalty:.2f}" if timeout else "")
             + (f" | False positive penalty: -{fp_penalty:.2f}" if fp_count > 0 else ""),
             f"Final score: {terminal_reward:.2f}",
@@ -523,6 +630,35 @@ class MedicalCodingEnvironment(Environment):
             f"These codes may be billed together on the same claim without a bundling conflict.",
             False,
         )
+
+    def _was_investigated(self, code: str, error_type: str) -> bool:
+        """
+        Check whether the agent investigated this code before flagging it.
+
+        Returns True if:
+        - For any error_type: agent called query_guideline on the code prior to this flag
+        - For ncci_edit: agent also called check_ncci_edits with this code in the pair
+        """
+        queried = code in self._codes_queried
+        if error_type == "ncci_edit":
+            # Also check if the agent did an NCCI check involving this code
+            ncci_checked = any(code in pair for pair in self._pairs_checked)
+            return queried or ncci_checked
+        return queried
+
+    def _thorough_review_bonus(self) -> float:
+        """
+        Bonus for querying all proposed codes before submitting.
+        Returns 0.05 if all codes were queried, 0.0 otherwise.
+        """
+        all_proposed = set(self._proposed_codes.keys())
+        all_queried = set(self._codes_queried)
+        # Consider NCCI-checked codes as "investigated" too
+        for pair in self._pairs_checked:
+            all_queried.update(pair.split("|"))
+        if all_proposed <= all_queried:
+            return 0.05
+        return 0.0
 
     def _justification_quality_bonus(self, code: str, justification: str) -> float:
         """
@@ -617,11 +753,17 @@ class MedicalCodingEnvironment(Environment):
                 done=done,
             )
 
+        # Partial observability: show only revealed sections
+        if self._partial_observability and self._note_sections:
+            visible_note = _build_visible_note(self._note_sections, self._revealed_section_count)
+        else:
+            visible_note = self._task["clinical_note"]
+
         return MedicalCodingObservation(
             task_id=self._task["task_id"],
             difficulty=self._task["difficulty"],
             patient_demographics=self._task["patient"],
-            clinical_note=self._task["clinical_note"],
+            clinical_note=visible_note,
             proposed_codes=self._proposed_codes,
             draft_report=list(self._draft_report),
             tool_result=tool_result,

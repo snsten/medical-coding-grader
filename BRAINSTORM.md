@@ -58,21 +58,57 @@ Add keyword-matching bonus: if `flag_error` justification contains key terms fro
 
 ---
 
-## Future Improvements (Not Implementing Now)
+## Implemented: D. Randomized Case Generation
 
-### D. Randomized Case Generation
-Generate cases programmatically from a larger code pool rather than 5 fixed scenarios. Would improve eval robustness but increases complexity significantly.
+Added `data/case_generator.py` — procedural case generator that composes error templates from the existing guideline data.
 
-### E. Partial Observability Mode
-Hide parts of the clinical note until the agent queries specific codes. Would model real-world information gathering more faithfully.
+- **Seeded RNG**: deterministic from episode_id, so grading is reproducible
+- **Difficulty targeting**: `task_id="random_easy"`, `random_medium"`, `random_hard"`, `random_expert"`, or plain `"random"`
+- **Error templates**: demographic_mismatch, excludes1 (COPD/asthma and DM), NCCI (echo and E/M), specificity, untraceable
+- **Filler codes**: valid codes added as false-positive traps
+- **Clinical note assembly**: section templates composed per error type + generic exam/plan
 
-### F. Multi-Turn Conversation History
-Track the full reasoning chain and reward coherent investigation strategies (query → analyze → flag → verify → submit) over random exploration.
+Difficulty → error_count mapping:
+| Difficulty | Errors | Filler Codes | Max Steps |
+|---|---|---|---|
+| easy | 1 | 1-2 | 10 |
+| medium | 1 | 1-2 | 15 |
+| hard | 2 | 1-2 | 20 |
+| expert | 3 | 1-3 | 25 |
+
+---
+
+## Implemented: E. Partial Observability Mode
+
+Activated via `reset(partial_observability=True)`.
+
+- Clinical note is parsed into sections (REASON FOR VISIT, HPI, PMH, EXAM, ASSESSMENT, etc.)
+- Initially only the REASON FOR VISIT section is visible
+- Each `query_guideline` call reveals the next section
+- Agent must actively investigate to gain information — models real chart review
+- Hidden section count shown: `[N more section(s) not yet revealed]`
+
+---
+
+## Implemented: F. Investigation Strategy Rewards
+
+Tracks the agent's action sequence to reward coherent investigation strategies.
+
+**Per-step signals:**
+- **+0.05 coherence bonus**: flag_error on a code that was previously queried via query_guideline (or check_ncci_edits for NCCI errors)
+- **-0.05 no-investigation penalty**: flag_error on a code without prior investigation
+
+**Terminal signal:**
+- **+0.05 thorough review bonus**: awarded at submit if all proposed codes were investigated (queried or NCCI-checked)
+
+This incentivizes the pattern: query all codes → analyze results → flag errors → submit, rather than random guessing.
 
 ---
 
 ## Priority Order
-1. **A** (reward shaping) — DONE. Efficiency bonus, FP penalty, auto-termination, justification quality.
-2. **B** (justification quality) — DONE. Key-term matching bonus.
-3. **C** (more tasks) — DONE. 2 new tasks (medium_excludes1, expert_multi_error) → 5 total.
-4. **D–F** — Aspirational, skip for hackathon
+1. **A** (reward shaping) — DONE
+2. **B** (justification quality) — DONE
+3. **C** (more tasks) — DONE. 5 fixed tasks.
+4. **D** (random cases) — DONE. Procedural generation with 7 error templates.
+5. **E** (partial observability) — DONE. Progressive note reveal.
+6. **F** (investigation strategy) — DONE. Coherence bonuses + thorough review reward.
