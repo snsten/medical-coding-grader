@@ -33,16 +33,35 @@ Add keyword-matching bonus: if `flag_error` justification contains key terms fro
 
 ---
 
+## Implemented: C. More Tasks / Scenarios
+
+### medium_excludes1 (new)
+- **Patient**: 58F, pulmonary clinic, COPD exacerbation
+- **Error**: J44.1 (COPD) + J45.20 (asthma) Excludes1 conflict
+- **Trap**: Z87.891 (personal history) is valid — should NOT be flagged
+- **Why it's good**: COPD/asthma overlap is one of the most common real-world Excludes1 violations. Clinical note explicitly documents the asthma diagnosis was superseded by COPD — agent must read and reason about it.
+
+### expert_multi_error (new)
+- **Patient**: 65M, cardiology + endocrinology, complex multi-system encounter
+- **Errors**: E10.9/E11.9 Excludes1 (Type 1 + Type 2 DM) + 93306/93308 NCCI PTP bundling
+- **Traps**: 99214 (office visit) and M79.621 (arm pain) are both valid
+- **Why it's good**: 6 proposed codes, 2 distinct errors, 2 false-positive traps. Tests comprehensive auditing — agent must not stop after finding the first error. Clinical note has explicit evidence (C-peptide, autoantibody panel) ruling out Type 1 DM.
+
+### Task coverage now: 5 tasks, 4 difficulty levels
+| Task | Difficulty | Error Types Tested |
+|---|---|---|
+| easy_demographic | easy | demographic_mismatch |
+| medium_ncci_conflict | medium | ncci_edit |
+| medium_excludes1 | medium | excludes1_conflict |
+| hard_specificity_untraceable | hard | specificity_error, untraceable_code |
+| expert_multi_error | expert | excludes1_conflict, ncci_edit (combined) |
+
+---
+
 ## Future Improvements (Not Implementing Now)
 
-### C. More Tasks / Scenarios
-- **Excludes1 conflict task**: E10.9 + E11.9 on same encounter (Type 1 + Type 2 diabetes mutually exclusive)
-- **Age restriction task**: Pediatric code on adult patient
-- **Modifier bypass task**: NCCI edit with modifier-allowed=true where agent must NOT flag it
-- **Multi-error complex task**: 4+ errors in one encounter (bundling + demographic + specificity)
-
 ### D. Randomized Case Generation
-Generate cases programmatically from a larger code pool rather than 3 fixed scenarios. Would improve eval robustness but increases complexity significantly.
+Generate cases programmatically from a larger code pool rather than 5 fixed scenarios. Would improve eval robustness but increases complexity significantly.
 
 ### E. Partial Observability Mode
 Hide parts of the clinical note until the agent queries specific codes. Would model real-world information gathering more faithfully.
@@ -53,7 +72,7 @@ Track the full reasoning chain and reward coherent investigation strategies (que
 ---
 
 ## Priority Order
-1. **A** (reward shaping) — Highest impact, directly affects evaluation criteria (25% task/grader quality + 20% environment design)
-2. **B** (justification quality) — Novel mechanic, addresses creativity/novelty (10% weight)
-3. **C** (more tasks) — Only if time permits, adds robustness
+1. **A** (reward shaping) — DONE. Efficiency bonus, FP penalty, auto-termination, justification quality.
+2. **B** (justification quality) — DONE. Key-term matching bonus.
+3. **C** (more tasks) — DONE. 2 new tasks (medium_excludes1, expert_multi_error) → 5 total.
 4. **D–F** — Aspirational, skip for hackathon

@@ -38,13 +38,17 @@ BENCHMARK = "medical_coding"
 TASK_IDS = [
     "easy_demographic",
     "medium_ncci_conflict",
+    "medium_excludes1",
     "hard_specificity_untraceable",
+    "expert_multi_error",
 ]
 
 MAX_STEPS_PER_TASK: Dict[str, int] = {
     "easy_demographic": 10,
     "medium_ncci_conflict": 15,
+    "medium_excludes1": 15,
     "hard_specificity_untraceable": 20,
+    "expert_multi_error": 25,
 }
 
 SUCCESS_THRESHOLD = 0.5

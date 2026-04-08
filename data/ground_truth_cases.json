@@ -256,6 +256,112 @@
         "For codes that cannot be found in the guideline database, flag them as untraceable",
         "ICD-10-CM Z99 category only has valid codes through Z99.89 — verify each code exists"
       ]
+    },
+    {
+      "task_id": "medium_excludes1",
+      "difficulty": "medium",
+      "description": "Identify an ICD-10-CM Excludes1 (mutually exclusive) conflict between COPD and asthma codes billed on the same encounter.",
+      "scenario": "A 58-year-old female presents to pulmonary clinic with an acute COPD exacerbation. The coder has listed both J44.1 (COPD with exacerbation) and J45.20 (mild intermittent asthma) on the same claim, violating the Excludes1 relationship between these two categories.",
+      "patient": {
+        "age": 58,
+        "sex": "female",
+        "mrn": "MRN-2024-004",
+        "insurance": "United Healthcare PPO"
+      },
+      "clinical_note": "REASON FOR VISIT: Acute exacerbation of chronic obstructive pulmonary disease.\n\nHISTORY OF PRESENT ILLNESS: Ms. D.L. is a 58-year-old female with a 20-year history of COPD (GOLD stage II) presenting with worsening dyspnea, increased sputum production, and purulent sputum over the past 4 days. She is a former smoker (35 pack-year history, quit 3 years ago). She has been using her albuterol rescue inhaler 6-8 times daily, up from her baseline of 1-2 times daily.\n\nPAST MEDICAL HISTORY: COPD diagnosed 2004. Note: Patient was previously given a working diagnosis of 'mild intermittent asthma' by her PCP in 2002, but pulmonary function testing in 2004 confirmed irreversible airflow obstruction consistent with COPD. The asthma diagnosis was superseded by the COPD diagnosis. She does NOT carry a concurrent asthma diagnosis.\n\nMEDICATIONS: Tiotropium 18mcg daily, fluticasone/salmeterol 250/50 BID, albuterol PRN.\n\nPHYSICAL EXAM: Vitals: BP 138/86, HR 92, RR 22, SpO2 91% on room air, Temp 99.1F. Respiratory: Diffuse expiratory wheezes bilaterally, prolonged expiratory phase, decreased breath sounds at bases. Using accessory muscles of respiration.\n\nSPIROMETRY (in-office): FEV1 45% predicted (baseline 58%), FEV1/FVC ratio 0.62. Post-bronchodilator FEV1 improvement <10% (consistent with COPD, not asthma).\n\nASSESSMENT AND PLAN:\n1. COPD with acute exacerbation — start prednisone 40mg daily x 5 days, azithromycin 500mg day 1 then 250mg days 2-5. Increase tiotropium. Oxygen supplementation as needed.\n2. The prior 'asthma' label from 2002 is no longer an active diagnosis. PFTs confirm irreversible obstruction. Do NOT code asthma concurrently with COPD per Excludes1 guidelines.",
+      "proposed_codes": {
+        "J44.1": {
+          "description": "Chronic obstructive pulmonary disease with acute exacerbation",
+          "code_type": "ICD-10-CM"
+        },
+        "J45.20": {
+          "description": "Mild intermittent asthma, uncomplicated",
+          "code_type": "ICD-10-CM"
+        },
+        "Z87.891": {
+          "description": "Personal history of other specified conditions",
+          "code_type": "ICD-10-CM"
+        }
+      },
+      "expected_errors": [
+        {
+          "code": "J44.1",
+          "error_type": "excludes1_conflict",
+          "conflicting_code": "J45.20",
+          "description": "ICD-10-CM code J44.1 (COPD with acute exacerbation) has an Excludes1 note for J45.- (Asthma). This means J44.1 and J45.20 (Mild intermittent asthma) are mutually exclusive and cannot be reported on the same encounter. The clinical note confirms the patient's diagnosis is COPD with irreversible obstruction; the prior asthma label was superseded. Only J44.1 should be coded.",
+          "key_terms": ["Excludes1", "mutually exclusive", "asthma", "COPD", "J45", "J44", "cannot be coded together", "superseded"]
+        }
+      ],
+      "max_steps": 15,
+      "hints": [
+        "Query the guidelines for J44.1 and check its Excludes1 list",
+        "Excludes1 means the two conditions cannot coexist on the same claim — they are mutually exclusive",
+        "Look at the clinical note for evidence about whether both diagnoses are currently active",
+        "Z87.891 (personal history) is a valid code and does not conflict with the other codes"
+      ]
+    },
+    {
+      "task_id": "expert_multi_error",
+      "difficulty": "expert",
+      "description": "Identify multiple coding errors (Excludes1 conflict + NCCI bundling violation) in a complex multi-system encounter with valid codes acting as false-positive traps.",
+      "scenario": "A 65-year-old male is seen for a comprehensive cardiology and endocrinology evaluation. The proposed codes contain two distinct errors: an Excludes1 conflict between Type 1 and Type 2 diabetes codes, and an NCCI PTP edit between echocardiography codes. Two additional codes are valid and should NOT be flagged.",
+      "patient": {
+        "age": 65,
+        "sex": "male",
+        "mrn": "MRN-2024-005",
+        "insurance": "Medicare Part B"
+      },
+      "clinical_note": "REASON FOR VISIT: Comprehensive cardiology follow-up with concurrent endocrinology management.\n\nHISTORY OF PRESENT ILLNESS: Mr. R.P. is a 65-year-old male with a history of Type 2 diabetes mellitus (diagnosed 2010, managed with metformin 1000mg BID and glipizide 5mg daily), coronary artery disease (status post 2-vessel CABG in 2019), hypertension, and chronic right upper arm pain from a rotator cuff repair 6 months ago.\n\nHe presents for his annual comprehensive cardiac evaluation and diabetes management review. His HbA1c has been stable at 7.2%. He reports occasional exertional dyspnea (NYHA class II) but no chest pain, syncope, or lower extremity edema. His right arm pain is improving with physical therapy.\n\nENDOCRINOLOGY ASSESSMENT: Patient has Type 2 diabetes mellitus. He has NEVER been diagnosed with Type 1 diabetes. C-peptide levels are within normal range (2.1 ng/mL), confirming endogenous insulin production. Autoantibody panel (GAD65, IA-2, ZnT8) was negative in 2010, ruling out autoimmune/Type 1 diabetes. The patient's diabetes is definitively classified as Type 2.\n\nCARDIOLOGY ASSESSMENT: A complete transthoracic echocardiogram was performed today with 2D imaging, M-mode, spectral Doppler, and color flow Doppler. LVEF 45-50% (mildly reduced, stable from prior). Mild aortic stenosis. No pericardial effusion. A follow-up limited echocardiogram was also documented for focused assessment of the aortic valve gradient.\n\nRIGHT ARM: Chronic pain in right upper arm, improving. ROM 80% of normal. No new imaging needed.\n\nASSESSMENT AND PLAN:\n1. Type 2 diabetes mellitus — stable, continue current regimen. Recheck HbA1c in 3 months.\n2. Coronary artery disease — stable post-CABG. LVEF mildly reduced but unchanged.\n3. Right upper arm pain — continue PT, reassess in 3 months.\n4. Schedule follow-up in 6 months.",
+      "proposed_codes": {
+        "E10.9": {
+          "description": "Type 1 diabetes mellitus without complications",
+          "code_type": "ICD-10-CM"
+        },
+        "E11.9": {
+          "description": "Type 2 diabetes mellitus without complications",
+          "code_type": "ICD-10-CM"
+        },
+        "93306": {
+          "description": "Echocardiography, transthoracic, complete study with spectral and color flow Doppler",
+          "code_type": "CPT"
+        },
+        "93308": {
+          "description": "Echocardiography, transthoracic, follow-up or limited study",
+          "code_type": "CPT"
+        },
+        "99214": {
+          "description": "Office visit, established patient, moderate-high complexity",
+          "code_type": "CPT"
+        },
+        "M79.621": {
+          "description": "Pain in right upper arm",
+          "code_type": "ICD-10-CM"
+        }
+      },
+      "expected_errors": [
+        {
+          "code": "E10.9",
+          "error_type": "excludes1_conflict",
+          "conflicting_code": "E11.9",
+          "description": "ICD-10-CM code E10.9 (Type 1 diabetes mellitus) has an Excludes1 note for E11.- (Type 2 diabetes mellitus). These codes are mutually exclusive and cannot appear on the same claim. The clinical note explicitly states the patient has Type 2 diabetes only, with negative autoantibody panel and normal C-peptide ruling out Type 1. E10.9 should be removed.",
+          "key_terms": ["Excludes1", "mutually exclusive", "Type 1", "Type 2", "E11", "E10", "diabetes", "cannot be coded together"]
+        },
+        {
+          "code": "93306",
+          "error_type": "ncci_edit",
+          "conflicting_code": "93308",
+          "description": "CPT 93306 (complete TTE with Doppler) and CPT 93308 (follow-up/limited TTE) are subject to a CMS NCCI PTP edit. The complete echocardiographic study inherently includes all components of a follow-up/limited study. Billing both on the same date of service constitutes unbundling. Only 93306 should be reported.",
+          "key_terms": ["bundling", "unbundling", "NCCI", "PTP", "complete", "limited", "follow-up", "93308", "comprehensive"]
+        }
+      ],
+      "max_steps": 25,
+      "hints": [
+        "This encounter has multiple distinct errors — do not stop after finding the first one",
+        "Check ICD-10 guidelines for Excludes1 relationships between diabetes codes",
+        "Use check_ncci_edits on all CPT code pairs to find bundling violations",
+        "Not every code has an error — M79.621 and 99214 are valid for this encounter",
+        "The clinical note contains explicit evidence ruling out Type 1 diabetes"
+      ]
     }
   ]
 }

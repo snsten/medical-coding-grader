@@ -132,7 +132,9 @@ class MedicalCodingEnvironment(Environment):
     _TASK_ORDER = [
         "easy_demographic",
         "medium_ncci_conflict",
+        "medium_excludes1",
         "hard_specificity_untraceable",
+        "expert_multi_error",
     ]
 
     def __init__(self) -> None:
