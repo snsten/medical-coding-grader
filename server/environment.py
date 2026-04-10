@@ -99,6 +99,27 @@ for _a in _ERROR_TYPES:
 
 
 # ---------------------------------------------------------------------------
+# Feature L: Frequency-weighted asymmetric reward multipliers
+# ---------------------------------------------------------------------------
+# Rarity reflects how often each error type occurs in real-world billing audits.
+# Rare, subtle errors are disproportionately rewarded (ASL-inspired).
+_ERROR_RARITY: Dict[str, float] = {
+    "demographic_mismatch": 1.0,   # common, visually obvious
+    "ncci_edit": 1.2,              # moderate — requires NCCI lookup
+    "excludes1_conflict": 1.2,     # moderate — requires guideline knowledge
+    "untraceable_code": 1.3,       # less common — requires code validation
+    "specificity_error": 1.5,      # rare, subtle — 7th character nuance
+}
+
+# ---------------------------------------------------------------------------
+# Feature K: Adaptive curriculum learning — class-level state
+# ---------------------------------------------------------------------------
+_CURRICULUM_LEVELS = ["easy", "medium", "hard", "expert"]
+_CURRICULUM_PROMOTE_THRESHOLD = 0.8   # avg score to move up
+_CURRICULUM_DEMOTE_THRESHOLD = 0.3    # avg score to move down
+_CURRICULUM_WINDOW = 5                # episodes to average over
+
+# ---------------------------------------------------------------------------
 # Partial Observability — Clinical Note Section Parser
 # ---------------------------------------------------------------------------
 
@@ -194,8 +215,10 @@ def _grade_audit(
 
         agent_error_types = flagged_by_code[exp_code]
 
+        # Feature L: rarity multiplier applied to grader credit
+        rarity = _ERROR_RARITY.get(exp_error_type, 1.0)
         if exp_error_type in agent_error_types:
-            total_credit += 1.0
+            total_credit += 1.0 * rarity
         else:
             # HERON: partial credit scaled by conceptual distance of best agent guess
             best_distance = min(
@@ -203,9 +226,12 @@ def _grade_audit(
                 for atype in agent_error_types
             )
             # distance=1 (close miss) → 0.55 credit, distance=2 (far miss) → 0.4 credit
-            total_credit += max(0.4, 0.7 - 0.15 * best_distance)
+            partial = max(0.4, 0.7 - 0.15 * best_distance)
+            total_credit += partial * rarity
 
-    base_score = round(total_credit / len(expected_errors), 4)
+    # Normalize by total possible credit (sum of rarity weights, not raw count)
+    max_credit = sum(_ERROR_RARITY.get(e["error_type"], 1.0) for e in expected_errors)
+    base_score = round(total_credit / max(max_credit, 1.0), 4)
     return base_score, false_positives
 
 
@@ -231,6 +257,12 @@ class MedicalCodingEnvironment(Environment):
     """
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
+
+    # Feature K: class-level curriculum state (shared across episodes)
+    _performance_history: Dict[str, List[float]] = {
+        level: [] for level in _CURRICULUM_LEVELS
+    }
+    _curriculum_level: str = "easy"
 
     # Default task cycling order for sequential inference runs
     _TASK_ORDER = [
@@ -260,6 +292,9 @@ class MedicalCodingEnvironment(Environment):
         self._revealed_section_count: int = 0
         # Feature G: physician clarifications
         self._clarifications_asked: List[str] = []
+        # Feature H: evidence extraction
+        self._extracted_evidence: List[str] = []        # all extracted spans
+        self._evidence_covered_codes: Set[str] = set()  # codes with relevant evidence
         # Feature M: episode metrics (populated at episode end)
         self._episode_metrics: Optional[Dict[str, Any]] = None
 
@@ -288,13 +323,20 @@ class MedicalCodingEnvironment(Environment):
         self._grader_score = None
         self._action_history = []
         self._clarifications_asked = []
+        self._extracted_evidence = []
+        self._evidence_covered_codes = set()
         self._episode_metrics = None
 
         # Select task
         tasks = {t["task_id"]: t for t in self._data["tasks"]}
         if task_id and task_id.startswith("random"):
             from data.case_generator import generate_random_task
-            difficulty = task_id.split("_", 1)[1] if "_" in task_id else None
+            if "_" in task_id:
+                # Explicit difficulty suffix: random_easy, random_medium, etc.
+                difficulty = task_id.split("_", 1)[1]
+            else:
+                # Feature K: no suffix → use adaptive curriculum level
+                difficulty = self._update_curriculum()
             self._task = generate_random_task(
                 self._data, self._state.episode_id, difficulty=difficulty,
             )
@@ -357,6 +399,7 @@ class MedicalCodingEnvironment(Environment):
             "check_ncci_edits": self._handle_check_ncci_edits,
             "flag_error": self._handle_flag_error,
             "ask_clarifying_question": self._handle_ask_clarification,
+            "extract_evidence": self._handle_extract_evidence,
             "submit_audit": self._handle_submit_audit,
         }.get(action.action_type)
 
@@ -612,6 +655,81 @@ class MedicalCodingEnvironment(Environment):
             error="Irrelevant clarifying question (no matching trigger in task pool).",
         )
 
+    def _handle_extract_evidence(self, action: MedicalCodingAction) -> MedicalCodingObservation:
+        """
+        Feature H: Extract a text span from the clinical note as evidence.
+
+        Validates the span exists verbatim in the note (hallucination guard).
+        Checks if it overlaps with expected evidence spans — rewards grounded reasoning.
+        Tracks which codes have documented evidence for the flag_error bonus.
+        """
+        span = action.evidence_text
+        self._action_history.append(("extract_evidence", span))
+
+        if not span:
+            return self._build_observation(
+                tool_result="extract_evidence requires an 'evidence_text' field.",
+                reward=-0.2,
+                done=False,
+                error="Missing required field: evidence_text",
+            )
+
+        clinical_note = self._task["clinical_note"]
+
+        # Hallucination guard: span must appear verbatim in the note
+        if span not in clinical_note:
+            return self._build_observation(
+                tool_result=(
+                    f"Evidence text not found verbatim in the clinical note. "
+                    f"Only extract exact substrings from the note."
+                ),
+                reward=-0.05,
+                done=False,
+                error="Hallucinated evidence: span not found in clinical note.",
+            )
+
+        # Repeated extraction penalty
+        if span in self._extracted_evidence:
+            return self._build_observation(
+                tool_result="This evidence span has already been extracted.",
+                reward=-0.05,
+                done=False,
+                error="Repeated evidence extraction.",
+            )
+
+        self._extracted_evidence.append(span)
+        span_lower = span.lower()
+
+        # Check against expected error evidence spans
+        matched_codes = []
+        for exp in self._task.get("expected_errors", []):
+            for evidence_span in exp.get("evidence_spans", []):
+                if evidence_span.lower() in span_lower or span_lower in evidence_span.lower():
+                    matched_codes.append(exp["code"])
+                    self._evidence_covered_codes.add(exp["code"])
+                    break
+
+        if matched_codes:
+            return self._build_observation(
+                tool_result=(
+                    f"Evidence extracted: \"{span[:120]}\"\n"
+                    f"This span is relevant to coding decision(s) for: {matched_codes}."
+                ),
+                reward=0.05,
+                done=False,
+            )
+
+        # Valid span but not linked to any expected error
+        return self._build_observation(
+            tool_result=(
+                f"Evidence extracted: \"{span[:120]}\"\n"
+                f"This span does not appear to be directly relevant to the expected coding errors. "
+                f"Continue investigating."
+            ),
+            reward=0.0,
+            done=False,
+        )
+
     def _finalize_episode(self, timeout: bool) -> MedicalCodingObservation:
         """
         Grade the audit and compute the terminal reward.
@@ -670,6 +788,11 @@ class MedicalCodingEnvironment(Environment):
         self._grader_score = terminal_reward
         self._done = True
 
+        # Feature K: record score in curriculum history
+        difficulty = self._task.get("difficulty", "easy")
+        if difficulty in MedicalCodingEnvironment._performance_history:
+            MedicalCodingEnvironment._performance_history[difficulty].append(terminal_reward)
+
         # Feature M: compute episode metrics
         self._episode_metrics = self._compute_episode_metrics(base_score, fp_count)
 
@@ -709,6 +832,27 @@ class MedicalCodingEnvironment(Environment):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _update_curriculum(self) -> str:
+        """
+        Feature K: Adaptive curriculum learning (HiCu-style).
+
+        Reads the class-level performance history to decide what difficulty to use
+        for the next random episode. Promotes when avg score > 0.8 over the last
+        N episodes; demotes when avg < 0.3. Returns the chosen difficulty string.
+        """
+        level = MedicalCodingEnvironment._curriculum_level
+        history = MedicalCodingEnvironment._performance_history.get(level, [])
+
+        if len(history) >= _CURRICULUM_WINDOW:
+            avg = sum(history[-_CURRICULUM_WINDOW:]) / _CURRICULUM_WINDOW
+            idx = _CURRICULUM_LEVELS.index(level)
+            if avg >= _CURRICULUM_PROMOTE_THRESHOLD and idx < len(_CURRICULUM_LEVELS) - 1:
+                MedicalCodingEnvironment._curriculum_level = _CURRICULUM_LEVELS[idx + 1]
+            elif avg <= _CURRICULUM_DEMOTE_THRESHOLD and idx > 0:
+                MedicalCodingEnvironment._curriculum_level = _CURRICULUM_LEVELS[idx - 1]
+
+        return MedicalCodingEnvironment._curriculum_level
 
     def _lookup_guideline(self, code: str) -> str:
         """Return official guideline text for a given code."""
@@ -913,19 +1057,25 @@ class MedicalCodingEnvironment(Environment):
         if error_type == correct_error_type:
             # Correct code AND correct error_type
             justification_bonus = self._justification_quality_bonus(code, justification)
+            # Feature H: evidence extraction bonus
+            evidence_bonus = 0.05 if code in self._evidence_covered_codes else 0.0
+            # Feature L: rarity multiplier scales the base reward
+            rarity = _ERROR_RARITY.get(error_type, 1.0)
             if error_type in ("ncci_edit", "excludes1_conflict"):
-                base = 0.3
-                return base + justification_bonus, (
+                base = round(0.3 * rarity, 3)
+                return base + justification_bonus + evidence_bonus, (
                     f"Correct! '{code}' has a '{error_type}' error. "
-                    f"Full reward for NCCI/Excludes1 conflict identification."
-                    + (f" Justification quality bonus: +{justification_bonus:.2f}" if justification_bonus > 0 else "")
+                    f"Full reward for NCCI/Excludes1 conflict identification (rarity×{rarity})."
+                    + (f" Justification bonus: +{justification_bonus:.2f}" if justification_bonus > 0 else "")
+                    + (f" Evidence bonus: +{evidence_bonus:.2f}" if evidence_bonus > 0 else "")
                 )
             else:
-                base = 0.2
-                return base + justification_bonus, (
+                base = round(0.2 * rarity, 3)
+                return base + justification_bonus + evidence_bonus, (
                     f"Correct! '{code}' has a '{error_type}' error. "
-                    f"Reward for accurate error classification."
-                    + (f" Justification quality bonus: +{justification_bonus:.2f}" if justification_bonus > 0 else "")
+                    f"Reward for accurate error classification (rarity×{rarity})."
+                    + (f" Justification bonus: +{justification_bonus:.2f}" if justification_bonus > 0 else "")
+                    + (f" Evidence bonus: +{evidence_bonus:.2f}" if evidence_bonus > 0 else "")
                 )
         else:
             # Correct code but wrong error_type — HERON-scaled penalty by conceptual distance
@@ -959,6 +1109,7 @@ class MedicalCodingEnvironment(Environment):
                 codes_queried=self._codes_queried,
                 pairs_checked=self._pairs_checked,
                 clarifications_asked=self._clarifications_asked,
+                extracted_evidence=self._extracted_evidence,
                 last_action_error=error,
                 grader_score=self._grader_score,
                 episode_metrics=self._episode_metrics,
@@ -984,6 +1135,7 @@ class MedicalCodingEnvironment(Environment):
             codes_queried=list(self._codes_queried),
             pairs_checked=list(self._pairs_checked),
             clarifications_asked=list(self._clarifications_asked),
+            extracted_evidence=list(self._extracted_evidence),
             last_action_error=error,
             grader_score=self._grader_score,
             episode_metrics=self._episode_metrics,

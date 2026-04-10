@@ -34,6 +34,9 @@ class MedicalCodingAction(Action):
         Required: question (str)
         Use when the clinical note is ambiguous or lacks information needed to
         determine the correct code. The environment returns the physician's response.
+    - extract_evidence: Highlight a specific text span from the clinical note as evidence
+        supporting a coding decision. Grounds reasoning in documentation.
+        Required: evidence_text (str) — must be an exact substring of the clinical note.
     - submit_audit: End the episode and submit the draft report for grading.
         No additional fields required.
     """
@@ -48,6 +51,7 @@ class MedicalCodingAction(Action):
         "check_ncci_edits",
         "flag_error",
         "ask_clarifying_question",
+        "extract_evidence",
         "submit_audit",
     ] = Field(
         ...,
@@ -123,6 +127,17 @@ class MedicalCodingAction(Action):
             "Question to ask the simulated physician for clarification. "
             "Required for action_type='ask_clarifying_question'. "
             "Use when documentation is ambiguous or missing information needed for coding."
+        ),
+    )
+
+    # -- extract_evidence fields --
+    evidence_text: Optional[str] = Field(
+        default=None,
+        description=(
+            "Exact text span from the clinical note to extract as evidence. "
+            "Required for action_type='extract_evidence'. "
+            "Must be an exact substring of the clinical note. "
+            "Use to ground a coding decision in specific documentation."
         ),
     )
 
@@ -209,6 +224,13 @@ class MedicalCodingObservation(Observation):
     clarifications_asked: List[str] = Field(
         default_factory=list,
         description="List of clarifying questions asked via ask_clarifying_question this episode.",
+    )
+    extracted_evidence: List[str] = Field(
+        default_factory=list,
+        description=(
+            "List of text spans extracted from the clinical note via extract_evidence this episode. "
+            "Each entry is an exact substring of the clinical note."
+        ),
     )
     last_action_error: Optional[str] = Field(
         default=None,

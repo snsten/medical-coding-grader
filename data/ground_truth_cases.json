@@ -157,7 +157,8 @@
           "code": "O80",
           "error_type": "demographic_mismatch",
           "description": "O80 (Encounter for full-term uncomplicated delivery) is a maternity code from the Pregnancy, Childbirth and the Puerperium chapter (O00-O9A), which by definition applies only to female patients. This code is clinically impossible for Mr. J.T., a 34-year-old male patient. Assigning this code to a male patient represents a severe demographic-sex applicability error.",
-          "key_terms": ["female", "male", "maternity", "obstetric", "delivery", "sex", "gender", "demographic"]
+          "key_terms": ["female", "male", "maternity", "obstetric", "delivery", "sex", "gender", "demographic"],
+          "evidence_spans": ["34-year-old male", "Mr. J.T.", "Alert and oriented male"]
         }
       ],
       "max_steps": 10,
@@ -205,7 +206,8 @@
           "error_type": "ncci_edit",
           "conflicting_code": "93307",
           "description": "CPT 93306 (complete transthoracic echocardiography with Doppler) and CPT 93307 (limited TTE without Doppler) are subject to a CMS NCCI Procedure-to-Procedure (PTP) edit. A complete echocardiographic study (93306) inherently includes all components of a limited study (93307). Billing both codes on the same date of service for the same patient constitutes unbundling. No modifier is permitted to override this edit. Only 93306 should be reported.",
-          "key_terms": ["bundling", "unbundling", "NCCI", "PTP", "complete", "limited", "component", "comprehensive", "93307"]
+          "key_terms": ["bundling", "unbundling", "NCCI", "PTP", "complete", "limited", "component", "comprehensive", "93307"],
+          "evidence_spans": ["complete transthoracic echocardiogram was performed today", "limited echocardiographic study was documented"]
         }
       ],
       "max_steps": 15,
@@ -246,13 +248,15 @@
           "code": "S52.501A",
           "error_type": "specificity_error",
           "description": "The 7th character 'A' (initial encounter for closed fracture) is incorrect for this visit. Per ICD-10-CM guidelines, the 7th character 'A' should be used only during the active/definitive treatment phase. The clinical note explicitly documents that this is a follow-up visit 6 weeks after the original injury, at which point active/definitive treatment has concluded. The correct code is S52.501D (subsequent encounter for fracture with routine healing). Using 'A' on a follow-up visit misrepresents the phase of care and is a compliance violation.",
-          "key_terms": ["7th character", "subsequent", "initial", "follow-up", "healing", "S52.501D", "encounter type", "phase of care"]
+          "key_terms": ["7th character", "subsequent", "initial", "follow-up", "healing", "S52.501D", "encounter type", "phase of care"],
+          "evidence_spans": ["Follow-up visit, 6 weeks post closed fracture", "SUBSEQUENT ENCOUNTER for a healing fracture, not an initial encounter", "routine follow-up 6 weeks after"]
         },
         {
           "code": "Z99.999",
           "error_type": "untraceable_code",
           "description": "Z99.999 does not exist in the official ICD-10-CM tabular list. The Z99 category (Dependence on enabling machines and devices, NEC) contains valid codes only through Z99.89. Z99.999 is not a recognized, billable ICD-10-CM code. This code cannot be validated against any official coding reference and must be flagged as untraceable. Submitting an untraceable code to a payer will result in claim denial.",
-          "key_terms": ["invalid", "untraceable", "not exist", "Z99", "not found", "official", "billable"]
+          "key_terms": ["invalid", "untraceable", "not exist", "Z99", "not found", "official", "billable"],
+          "evidence_spans": ["Unspecified dependence on enabling machine (placeholder)"]
         }
       ],
       "max_steps": 20,
@@ -305,7 +309,8 @@
           "error_type": "excludes1_conflict",
           "conflicting_code": "J45.20",
           "description": "ICD-10-CM code J44.1 (COPD with acute exacerbation) has an Excludes1 note for J45.- (Asthma). This means J44.1 and J45.20 (Mild intermittent asthma) are mutually exclusive and cannot be reported on the same encounter. The clinical note confirms the patient's diagnosis is COPD with irreversible obstruction; the prior asthma label was superseded. Only J44.1 should be coded.",
-          "key_terms": ["Excludes1", "mutually exclusive", "asthma", "COPD", "J45", "J44", "cannot be coded together", "superseded"]
+          "key_terms": ["Excludes1", "mutually exclusive", "asthma", "COPD", "J45", "J44", "cannot be coded together", "superseded"],
+          "evidence_spans": ["asthma diagnosis was superseded by the COPD diagnosis", "Do NOT code asthma concurrently with COPD per Excludes1 guidelines", "She does NOT carry a concurrent asthma diagnosis"]
         }
       ],
       "max_steps": 15,
@@ -360,14 +365,16 @@
           "error_type": "excludes1_conflict",
           "conflicting_code": "E11.9",
           "description": "ICD-10-CM code E10.9 (Type 1 diabetes mellitus) has an Excludes1 note for E11.- (Type 2 diabetes mellitus). These codes are mutually exclusive and cannot appear on the same claim. The clinical note explicitly states the patient has Type 2 diabetes only, with negative autoantibody panel and normal C-peptide ruling out Type 1. E10.9 should be removed.",
-          "key_terms": ["Excludes1", "mutually exclusive", "Type 1", "Type 2", "E11", "E10", "diabetes", "cannot be coded together"]
+          "key_terms": ["Excludes1", "mutually exclusive", "Type 1", "Type 2", "E11", "E10", "diabetes", "cannot be coded together"],
+          "evidence_spans": ["He has NEVER been diagnosed with Type 1 diabetes", "C-peptide levels are within normal range", "Autoantibody panel (GAD65, IA-2, ZnT8) was negative"]
         },
         {
           "code": "93306",
           "error_type": "ncci_edit",
           "conflicting_code": "93308",
           "description": "CPT 93306 (complete TTE with Doppler) and CPT 93308 (follow-up/limited TTE) are subject to a CMS NCCI PTP edit. The complete echocardiographic study inherently includes all components of a follow-up/limited study. Billing both on the same date of service constitutes unbundling. Only 93306 should be reported.",
-          "key_terms": ["bundling", "unbundling", "NCCI", "PTP", "complete", "limited", "follow-up", "93308", "comprehensive"]
+          "key_terms": ["bundling", "unbundling", "NCCI", "PTP", "complete", "limited", "follow-up", "93308", "comprehensive"],
+          "evidence_spans": ["complete transthoracic echocardiogram was performed today", "A follow-up limited echocardiogram was also documented for focused assessment"]
         }
       ],
       "max_steps": 25,

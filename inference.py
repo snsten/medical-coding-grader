@@ -114,7 +114,11 @@ Available tools (respond with exactly ONE JSON object per turn):
    {"action_type": "ask_clarifying_question", "question": "<YOUR QUESTION>"}
    Use when you need to confirm: patient sex/age, encounter type (initial vs. follow-up), or diagnosis history.
 
-5. submit_audit — submit the completed audit report when you are done.
+5. extract_evidence — highlight an exact text span from the clinical note as evidence for a coding decision.
+   {"action_type": "extract_evidence", "evidence_text": "<EXACT SUBSTRING FROM NOTE>"}
+   Use before flagging an error to ground your reasoning in specific documentation.
+
+6. submit_audit — submit the completed audit report when you are done.
    {"action_type": "submit_audit"}
 
 RULES:
@@ -125,6 +129,7 @@ RULES:
 - Check patient sex — maternity (O-codes) ONLY apply to female patients.
 - Check 7th character on injury codes against the clinical note (initial vs. subsequent encounter).
 - Use ask_clarifying_question if demographics or encounter type are unclear before flagging.
+- Use extract_evidence to quote the exact clinical note text that supports each flag.
 - Submit the audit only after reviewing all proposed codes.
 - Respond with ONLY a valid JSON object — no markdown, no extra text.
 """).strip()
