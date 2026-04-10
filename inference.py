@@ -110,7 +110,11 @@ Available tools (respond with exactly ONE JSON object per turn):
      specificity_error     — wrong 7th character or insufficient code specificity
      untraceable_code      — code does not exist in any official code set
 
-4. submit_audit — submit the completed audit report when you are done.
+4. ask_clarifying_question — ask the physician for missing clinical information when the note is ambiguous.
+   {"action_type": "ask_clarifying_question", "question": "<YOUR QUESTION>"}
+   Use when you need to confirm: patient sex/age, encounter type (initial vs. follow-up), or diagnosis history.
+
+5. submit_audit — submit the completed audit report when you are done.
    {"action_type": "submit_audit"}
 
 RULES:
@@ -120,6 +124,7 @@ RULES:
 - If query_guideline returns "CODE NOT FOUND" or "INVALID/UNTRACEABLE", flag it as untraceable_code.
 - Check patient sex — maternity (O-codes) ONLY apply to female patients.
 - Check 7th character on injury codes against the clinical note (initial vs. subsequent encounter).
+- Use ask_clarifying_question if demographics or encounter type are unclear before flagging.
 - Submit the audit only after reviewing all proposed codes.
 - Respond with ONLY a valid JSON object — no markdown, no extra text.
 """).strip()

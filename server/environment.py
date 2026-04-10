@@ -197,7 +197,13 @@ def _grade_audit(
         if exp_error_type in agent_error_types:
             total_credit += 1.0
         else:
-            total_credit += 0.5
+            # HERON: partial credit scaled by conceptual distance of best agent guess
+            best_distance = min(
+                _ERROR_TYPE_DISTANCE.get((atype, exp_error_type), 2)
+                for atype in agent_error_types
+            )
+            # distance=1 (close miss) → 0.55 credit, distance=2 (far miss) → 0.4 credit
+            total_credit += max(0.4, 0.7 - 0.15 * best_distance)
 
     base_score = round(total_credit / len(expected_errors), 4)
     return base_score, false_positives
@@ -281,6 +287,8 @@ class MedicalCodingEnvironment(Environment):
         self._done = False
         self._grader_score = None
         self._action_history = []
+        self._clarifications_asked = []
+        self._episode_metrics = None
 
         # Select task
         tasks = {t["task_id"]: t for t in self._data["tasks"]}
@@ -348,6 +356,7 @@ class MedicalCodingEnvironment(Environment):
             "query_guideline": self._handle_query_guideline,
             "check_ncci_edits": self._handle_check_ncci_edits,
             "flag_error": self._handle_flag_error,
+            "ask_clarifying_question": self._handle_ask_clarification,
             "submit_audit": self._handle_submit_audit,
         }.get(action.action_type)
 
@@ -546,6 +555,63 @@ class MedicalCodingEnvironment(Environment):
         """Auto-submit when max_steps is reached. Applies a timeout penalty."""
         return self._finalize_episode(timeout=True)
 
+    def _handle_ask_clarification(self, action: MedicalCodingAction) -> MedicalCodingObservation:
+        """
+        Simulate asking the physician a clarifying question.
+
+        The environment matches the question against keyword triggers in the task's
+        clarification_pool. A relevant question yields a physician response and a
+        +0.15 reward. Irrelevant or repeated questions are penalized.
+        """
+        question = action.question
+        self._action_history.append(("ask_clarifying_question", question))
+
+        if not question:
+            return self._build_observation(
+                tool_result="ask_clarifying_question requires a 'question' field.",
+                reward=-0.2,
+                done=False,
+                error="Missing required field: question",
+            )
+
+        # Repeated question penalty
+        if question in self._clarifications_asked:
+            return self._build_observation(
+                tool_result="You have already asked this question. Avoid repeating clarifications.",
+                reward=-0.1,
+                done=False,
+                error="Repeated clarifying question.",
+            )
+
+        self._clarifications_asked.append(question)
+
+        # Match against clarification_pool (keyword-based)
+        pool = self._task.get("clarification_pool", [])
+        question_lower = question.lower()
+
+        for entry in pool:
+            triggers = entry.get("triggers", [])
+            if any(t.lower() in question_lower for t in triggers):
+                response = entry["response"]
+                return self._build_observation(
+                    tool_result=(
+                        f"PHYSICIAN RESPONSE: {response}"
+                    ),
+                    reward=0.15,
+                    done=False,
+                )
+
+        # No matching clarification — irrelevant question
+        return self._build_observation(
+            tool_result=(
+                "PHYSICIAN RESPONSE: I don't have additional information on that. "
+                "Please proceed with the available documentation."
+            ),
+            reward=-0.1,
+            done=False,
+            error="Irrelevant clarifying question (no matching trigger in task pool).",
+        )
+
     def _finalize_episode(self, timeout: bool) -> MedicalCodingObservation:
         """
         Grade the audit and compute the terminal reward.
@@ -573,11 +639,39 @@ class MedicalCodingEnvironment(Environment):
         # Thorough review bonus
         review_bonus = self._thorough_review_bonus() if not timeout else 0.0
 
-        terminal_reward = base_score - fp_penalty + efficiency_bonus - timeout_penalty + review_bonus
+        # Feature G: clarification terminal bonus
+        # +0.10 if agent asked at least one relevant clarification before flagging
+        clarification_bonus = 0.0
+        pool = self._task.get("clarification_pool", [])
+        if pool and self._clarifications_asked:
+            # Check if any asked question matched a pool trigger
+            matched = False
+            for entry in pool:
+                triggers = entry.get("triggers", [])
+                for q in self._clarifications_asked:
+                    if any(t.lower() in q.lower() for t in triggers):
+                        matched = True
+                        break
+                if matched:
+                    break
+            if matched:
+                clarification_bonus = 0.10
+
+        terminal_reward = (
+            base_score
+            - fp_penalty
+            + efficiency_bonus
+            - timeout_penalty
+            + review_bonus
+            + clarification_bonus
+        )
         terminal_reward = round(max(min(terminal_reward, 1.0), 0.0), 4)
 
         self._grader_score = terminal_reward
         self._done = True
+
+        # Feature M: compute episode metrics
+        self._episode_metrics = self._compute_episode_metrics(base_score, fp_count)
 
         errors_found = len(self._draft_report)
         errors_expected = len(expected_errors)
@@ -586,6 +680,7 @@ class MedicalCodingEnvironment(Environment):
             f"AUDIT {'AUTO-SUBMITTED (max steps reached)' if timeout else 'SUBMITTED'}.",
             f"Base grader score: {base_score:.2f} | Efficiency bonus: +{efficiency_bonus:.2f}"
             + (f" | Thorough review bonus: +{review_bonus:.2f}" if review_bonus > 0 else "")
+            + (f" | Clarification bonus: +{clarification_bonus:.2f}" if clarification_bonus > 0 else "")
             + (f" | Timeout penalty: -{timeout_penalty:.2f}" if timeout else "")
             + (f" | False positive penalty: -{fp_penalty:.2f}" if fp_count > 0 else ""),
             f"Final score: {terminal_reward:.2f}",
@@ -723,6 +818,78 @@ class MedicalCodingEnvironment(Environment):
                 return 0.05
         return 0.0
 
+    def _compute_episode_metrics(self, base_score: float, fp_count: int) -> Dict[str, Any]:
+        """
+        Feature M: Compute trajectory evaluation metrics at episode end.
+
+        Returns a dict with metrics useful for RL training diagnostics:
+        - trajectory_length: total steps taken
+        - tool_failure_rate: fraction of steps that returned an error
+        - investigation_coverage: fraction of proposed codes investigated
+        - flag_precision: fraction of flags that are true positives
+        - flag_recall: fraction of expected errors that were flagged correctly
+        - avg_reward_per_step: mean per-step reward (excluding terminal)
+        - investigation_before_flag_rate: fraction of flags preceded by investigation
+        - clarification_count: number of clarifying questions asked
+        """
+        steps = self._state.step_count
+        expected_errors = self._task.get("expected_errors", [])
+        expected_by_code = {e["code"]: e["error_type"] for e in expected_errors}
+
+        # Tool failure rate: actions with an error response
+        error_actions = sum(
+            1 for atype, _ in self._action_history
+            if atype in ("query_guideline", "check_ncci_edits", "flag_error", "ask_clarifying_question")
+        )
+        # Count repeated/hallucinated actions as failures by checking action_history length
+        failure_steps = sum(
+            1 for atype, val in self._action_history
+            if val is not None and atype == "query_guideline" and (
+                val not in self._proposed_codes or self._action_history.count((atype, val)) > 1
+            )
+        )
+        tool_failure_rate = round(failure_steps / max(steps, 1), 4)
+
+        # Investigation coverage
+        investigated: Set[str] = set(self._codes_queried)
+        for pair in self._pairs_checked:
+            investigated.update(pair.split("|"))
+        proposed_set = set(self._proposed_codes.keys())
+        investigation_coverage = round(
+            len(investigated & proposed_set) / max(len(proposed_set), 1), 4
+        )
+
+        # Flag precision / recall
+        true_positives = sum(
+            1 for e in self._draft_report
+            if e["code"] in expected_by_code and e["error_type"] == expected_by_code[e["code"]]
+        )
+        flag_precision = round(true_positives / max(len(self._draft_report), 1), 4)
+        flag_recall = round(true_positives / max(len(expected_errors), 1), 4)
+
+        # Investigation-before-flag rate
+        flag_actions = [
+            val for atype, val in self._action_history if atype == "flag_error" and val
+        ]
+        investigated_before_flag = sum(
+            1 for code in flag_actions if code in investigated
+        )
+        investigation_before_flag_rate = round(
+            investigated_before_flag / max(len(flag_actions), 1), 4
+        )
+
+        return {
+            "trajectory_length": steps,
+            "tool_failure_rate": tool_failure_rate,
+            "investigation_coverage": investigation_coverage,
+            "flag_precision": flag_precision,
+            "flag_recall": flag_recall,
+            "base_grader_score": round(base_score, 4),
+            "false_positive_count": fp_count,
+            "investigation_before_flag_rate": investigation_before_flag_rate,
+            "clarification_count": len(self._clarifications_asked),
+        }
+
     def _score_flag(
         self,
         code: str,
@@ -761,10 +928,12 @@ class MedicalCodingEnvironment(Environment):
                     + (f" Justification quality bonus: +{justification_bonus:.2f}" if justification_bonus > 0 else "")
                 )
         else:
-            # Correct code but wrong error_type classification — small negative
-            return -0.1, (
-                f"Code '{code}' does have an error, but the error_type '{error_type}' "
-                f"does not match the expected classification. "
+            # Correct code but wrong error_type — HERON-scaled penalty by conceptual distance
+            distance = _ERROR_TYPE_DISTANCE.get((error_type, correct_error_type), 2)
+            penalty = -0.05 * distance  # -0.05 for close miss, -0.10 for far miss
+            return penalty, (
+                f"Code '{code}' does have an error, but '{error_type}' does not match "
+                f"the expected classification (distance={distance}). "
                 f"Re-examine the coding guidelines for this code."
             )
 
@@ -789,8 +958,10 @@ class MedicalCodingEnvironment(Environment):
                 step_count=self._state.step_count,
                 codes_queried=self._codes_queried,
                 pairs_checked=self._pairs_checked,
+                clarifications_asked=self._clarifications_asked,
                 last_action_error=error,
                 grader_score=self._grader_score,
+                episode_metrics=self._episode_metrics,
                 reward=reward,
                 done=done,
             )
@@ -812,8 +983,10 @@ class MedicalCodingEnvironment(Environment):
             step_count=self._state.step_count,
             codes_queried=list(self._codes_queried),
             pairs_checked=list(self._pairs_checked),
+            clarifications_asked=list(self._clarifications_asked),
             last_action_error=error,
             grader_score=self._grader_score,
+            episode_metrics=self._episode_metrics,
             reward=reward,
             done=done,
         )

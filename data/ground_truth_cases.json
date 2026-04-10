@@ -165,6 +165,12 @@
         "Check each proposed code against the patient's demographic information",
         "Pay attention to the chapter classification of each ICD-10 code",
         "O-codes (O00-O9A) are the Obstetrics chapter — they apply exclusively to female patients"
+      ],
+      "clarification_pool": [
+        {
+          "triggers": ["sex", "gender", "male", "female", "patient sex", "patient gender", "o80", "obstetric", "maternity", "delivery"],
+          "response": "The patient is a 34-year-old male. He has never been pregnant. Code O80 was added in error — it is not clinically applicable to this patient."
+        }
       ]
     },
     {
@@ -255,6 +261,16 @@
         "7th character extensions for fracture codes indicate the phase of care, not just the fracture type",
         "For codes that cannot be found in the guideline database, flag them as untraceable",
         "ICD-10-CM Z99 category only has valid codes through Z99.89 — verify each code exists"
+      ],
+      "clarification_pool": [
+        {
+          "triggers": ["initial", "subsequent", "follow-up", "encounter type", "7th character", "first visit", "fracture treatment", "active treatment"],
+          "response": "This is a follow-up visit. The fracture was first treated 6 weeks ago in the emergency department. Today's visit is for routine monitoring of healing — the patient is no longer in the active/definitive treatment phase."
+        },
+        {
+          "triggers": ["z99", "z99.999", "untraceable", "invalid code", "not exist", "dependence"],
+          "response": "Z99.999 was added by a transcription error. It does not correspond to any active diagnosis for this patient. The Z99 category only has valid codes through Z99.89."
+        }
       ]
     },
     {
