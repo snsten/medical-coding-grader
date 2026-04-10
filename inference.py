@@ -2,8 +2,8 @@
 Inference Script — Medical Coding Auditor Environment
 =======================================================
 MANDATORY ENVIRONMENT VARIABLES:
-    API_BASE_URL      The API endpoint for the LLM (default: "<your-active-endpoint>").
-    MODEL_NAME        The model identifier to use for inference (default: "<your-active-model>").
+    API_BASE_URL      The API endpoint for the LLM (default: "https://api.openai.com/v1").
+    MODEL_NAME        The model identifier to use for inference (default: "gpt-4.1-mini").
     HF_TOKEN          Your Hugging Face / API key (used as API key for LLM calls). No default.
     LOCAL_IMAGE_NAME  (optional) Docker image name if launching env via from_docker_image().
     ENV_BASE_URL      (optional) Base URL of the running env server (default: http://localhost:7860).
@@ -324,7 +324,6 @@ async def run_task_http(
     state from the reset observation into a stateful local environment instance
     for demonstration.
     """
-    import httpx
     # Import environment directly for stateful HTTP-like simulation
     import sys
     import os
