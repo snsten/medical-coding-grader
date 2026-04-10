@@ -347,3 +347,176 @@ visualize how the agent's reasoning evolves. Judges will notice richer evaluatio
 **Recommendation**: Implement G + I + M first — they collectively address the three
 highest-weighted judging criteria (real-world utility 30%, task/grader quality 25%,
 environment design 20%) and the creativity bonus (10%).
+
+---
+---
+
+# Phase 3: Reference Implementation Gap Analysis
+
+Based on study of the canonical OpenEnv reference environments:
+- `reasoning_gym_env` (closest in structure to ours — single-file env, typed models)
+- `calendar_env` (MCP-based, multi-file server)
+- `tbench2_env` (multi-stage Dockerfile pattern)
+
+All Phase 1 (A–F) and Phase 2 (G–M) items are assumed complete.
+The gaps below are **infrastructure, packaging, and code correctness** issues
+not covered by the ML/RL brainstorm items.
+
+---
+
+## N. Dockerfile: Replace with openenv-base Multi-Stage Pattern (HIGH PRIORITY)
+
+**What**: The reference environments use `ghcr.io/meta-pytorch/openenv-base:latest`
+as the base image with a two-stage Docker build (builder + runtime). They install
+dependencies via `uv sync` (not `pip install`) and use a committed `uv.lock` for
+reproducible builds.
+
+**Why**: Our current `python:3.11-slim` + pip Dockerfile works locally but:
+1. May not be compatible with `openenv build` / `openenv push` tooling
+2. pip-based installs are not reproducible across evaluator machines without a lockfile
+3. The reference pattern sets `ENV PYTHONPATH="/app/env:$PYTHONPATH"` explicitly —
+   without this, relative imports (e.g. `from data.case_generator import ...`) can
+   fail depending on how uvicorn resolves the module search path at runtime
+
+**Changes needed**:
+1. Rewrite `server/Dockerfile` to match the reference multi-stage pattern:
+   - Stage 1 (builder): `FROM ghcr.io/meta-pytorch/openenv-base:latest AS builder`,
+     `COPY . /app/env`, `WORKDIR /app/env`, `uv sync --frozen --no-editable`
+   - Stage 2 (runtime): copy `.venv` and `/app/env`, set `PATH` and `PYTHONPATH`
+   - CMD: `cd /app/env && uvicorn server.app:app --host 0.0.0.0 --port 7860`
+2. Add `ARG BASE_IMAGE=ghcr.io/meta-pytorch/openenv-base:latest` at top
+3. Add `ARG BUILD_MODE=standalone` and `ARG ENV_NAME=medical_coding`
+4. Add `ENV PYTHONPATH="/app/env:$PYTHONPATH"` in the runtime stage
+
+**Files to modify**: `server/Dockerfile`
+
+---
+
+## O. Bug: `app.py __main__` Argparse Args Not Used (HIGH PRIORITY)
+
+**What**: In `server/app.py`, the `__main__` block parses `--port` and `--host`
+via argparse but then calls `main()` without forwarding those values. The parsed
+args are silently discarded and the server always binds to the default port.
+
+```python
+# Current (broken):
+args = parser.parse_args()
+main()  # ignores args.port and args.host!
+
+# Correct:
+args = parser.parse_args()
+main(host=args.host, port=args.port)
+```
+
+**Why**: If the evaluator or `openenv` tooling invokes `python -m server.app --port 7860`,
+the port argument is ignored. Also blocks any `openenv build` port override.
+
+**Files to modify**: `server/app.py`
+
+---
+
+## P. `client.py`: New Action/Observation Fields Not Synced (HIGH PRIORITY)
+
+**What**: `client.py` was written before Phase 2 features. It is missing:
+- `_step_payload`: doesn't include `question` (ask_clarifying_question) or
+  `evidence_text` (extract_evidence) fields. Sending these actions via the
+  client will silently drop those fields.
+- `_parse_result`: doesn't parse `clarifications_asked`, `extracted_evidence`,
+  or `episode_metrics` from the observation payload.
+
+**Why**: Any evaluation loop that uses `MedicalCodingEnv` (the typed client) to
+call the new G/H actions will have those fields stripped. The client is the
+primary integration surface for external evaluators.
+
+**Changes needed**:
+1. In `_step_payload`: add `if action.question is not None: payload["question"] = action.question`
+   and `if action.evidence_text is not None: payload["evidence_text"] = action.evidence_text`
+2. In `_parse_result`: add `clarifications_asked=obs_data.get("clarifications_asked", [])`,
+   `extracted_evidence=obs_data.get("extracted_evidence", [])`,
+   `episode_metrics=obs_data.get("episode_metrics")`
+
+**Files to modify**: `client.py`
+
+---
+
+## Q. Missing `.dockerignore` (MEDIUM PRIORITY)
+
+**What**: All reference environments include a `.dockerignore` file at the project
+root to exclude git history, `__pycache__`, `.git/`, test files, and development
+artifacts from the Docker build context.
+
+**Why**: Without `.dockerignore`, `COPY . /app/env` in the multi-stage Dockerfile
+will include `.git/` (large), `__pycache__/`, and `BRAINSTORM.md` in the image.
+This bloats the image and increases build time — a real issue within the hackathon's
+2 vCPU / 8 GB constraint.
+
+**Changes needed**: Add `.dockerignore` to project root containing:
+```
+.git/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.env
+BRAINSTORM.md
+docs/
+```
+
+**Files to create**: `.dockerignore`
+
+---
+
+## R. Missing `server/requirements.txt` (LOW PRIORITY)
+
+**What**: Reference environments include a `server/requirements.txt` alongside
+the `server/Dockerfile` as a fallback for pip-based installation. The reference
+Dockerfile uses `uv sync`, but this file documents the server's minimal deps
+for manual installs or CI.
+
+**Why**: Some deployment pipelines use `pip install -r server/requirements.txt`.
+Without it, those pipelines have no dependency manifest for the server specifically.
+
+**Changes needed**: Create `server/requirements.txt` with:
+```
+openenv-core[core]>=0.2.2
+uvicorn>=0.29.0
+```
+
+**Files to create**: `server/requirements.txt`
+
+---
+
+## S. `models.py` Missing `__all__` Export List (LOW PRIORITY)
+
+**What**: Reference `calendar_env/models.py` defines an explicit `__all__` list
+for all public symbols. Our `models.py` has no `__all__`.
+
+**Why**: Without `__all__`, `from models import *` would import everything including
+internal symbols. More importantly, tools like `openenv schema` use module introspection
+— explicit `__all__` ensures only the intended public types are exposed.
+
+**Changes needed**: Add at the end of `models.py`:
+```python
+__all__ = ["MedicalCodingAction", "MedicalCodingObservation"]
+```
+
+**Files to modify**: `models.py`
+
+---
+
+## Phase 3 Priority Order
+
+| Priority | Item | Impact | Effort | Risk if Missing |
+|---|---|---|---|---|
+| 1 | **O** (app.py argparse bug) | High | Trivial | `--port` flag silently ignored |
+| 2 | **P** (client.py field sync) | High | Low | New actions broken in typed client |
+| 3 | **N** (Dockerfile openenv-base) | High | Medium | Build incompatibility with openenv tooling |
+| 4 | **Q** (.dockerignore) | Medium | Trivial | Image bloat, slow builds |
+| 5 | **R** (server/requirements.txt) | Low | Trivial | Missing pip fallback manifest |
+| 6 | **S** (__all__ in models.py) | Low | Trivial | Schema introspection incomplete |
+
+**Recommendation**: Fix O + P immediately (bugs). Then N (Dockerfile modernisation)
+before the next HF Space push to ensure `openenv build` compatibility.
