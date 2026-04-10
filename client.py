@@ -64,6 +64,10 @@ class MedicalCodingEnv(
             payload["error_type"] = action.error_type
         if action.justification is not None:
             payload["justification"] = action.justification
+        if action.question is not None:
+            payload["question"] = action.question
+        if action.evidence_text is not None:
+            payload["evidence_text"] = action.evidence_text
         if action.metadata:
             payload["metadata"] = action.metadata
         return payload
@@ -82,11 +86,13 @@ class MedicalCodingEnv(
             step_count=obs_data.get("step_count", 0),
             codes_queried=obs_data.get("codes_queried", []),
             pairs_checked=obs_data.get("pairs_checked", []),
+            clarifications_asked=obs_data.get("clarifications_asked", []),
+            extracted_evidence=obs_data.get("extracted_evidence", []),
             last_action_error=obs_data.get("last_action_error"),
             grader_score=obs_data.get("grader_score"),
+            episode_metrics=obs_data.get("episode_metrics"),
             done=payload.get("done", False),
             reward=payload.get("reward", 0.0),
-            metadata=obs_data.get("metadata", {}),
         )
         return StepResult(
             observation=observation,

@@ -57,4 +57,4 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "7860")))
     parser.add_argument("--host", type=str, default="0.0.0.0")
     args = parser.parse_args()
-    main()  # runs with argparse defaults when called without arguments
+    main(host=args.host, port=args.port)

@@ -1,0 +1,3 @@
+# Server runtime dependencies (pip fallback — canonical installs use uv sync via pyproject.toml)
+openenv-core[core]>=0.2.2
+uvicorn[standard]>=0.29.0

@@ -1,0 +1,35 @@
+# Git history — large and not needed in the image
+.git/
+.gitignore
+
+# Python bytecode and caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Development and IDE files
+.env
+.env.*
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Documentation and project management (not needed at runtime)
+BRAINSTORM.md
+docs/
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Virtual environments (will be created fresh by uv sync)
+.venv/
+venv/
+env/
