@@ -20,7 +20,15 @@ Reward shaping (dense, multi-signal):
   +final Terminal reward on SubmitAudit:
          grader_score - 0.15 * false_positives + 0.1 * (max_steps - steps) / max_steps
          + 0.05 thorough_review bonus (queried all proposed codes before submitting)
+  +0.15  Relevant clarifying question (matches trigger keywords in clarification pool)
+  -0.10  Irrelevant or repeated clarifying question
+  +0.10  Terminal bonus for asking necessary clarifications before flagging
   Auto-termination: episode ends with auto-submit and -0.1 penalty at max_steps
+
+Hierarchical reward (HERON-style):
+  Wrong error_type penalty scaled by conceptual distance between error types.
+  Close misclassifications (e.g. excludes1↔ncci_edit) penalized less than
+  distant ones (e.g. demographic_mismatch↔untraceable_code).
 
 Partial observability mode:
   When enabled via reset(partial_observability=True), the clinical note is
@@ -58,6 +66,36 @@ _DATA_FILE = Path(__file__).parent.parent / "data" / "ground_truth_cases.json"
 def _load_data() -> Dict[str, Any]:
     with open(_DATA_FILE, "r", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+# ---------------------------------------------------------------------------
+# Feature I: HERON-style error_type distance matrix
+# ---------------------------------------------------------------------------
+# Distance 0 = same type, 1 = close (same category), 2 = far (different category)
+# Categories: "conflict" (excludes1, ncci_edit), "validity" (specificity, untraceable),
+#             "demographic" (demographic_mismatch)
+
+_ERROR_TYPE_DISTANCE: Dict[tuple[str, str], int] = {}
+_ERROR_TYPES = [
+    "demographic_mismatch", "excludes1_conflict", "ncci_edit",
+    "specificity_error", "untraceable_code",
+]
+_ERROR_CATEGORIES = {
+    "excludes1_conflict": "conflict",
+    "ncci_edit": "conflict",
+    "specificity_error": "validity",
+    "untraceable_code": "validity",
+    "demographic_mismatch": "demographic",
+}
+
+for _a in _ERROR_TYPES:
+    for _b in _ERROR_TYPES:
+        if _a == _b:
+            _ERROR_TYPE_DISTANCE[(_a, _b)] = 0
+        elif _ERROR_CATEGORIES[_a] == _ERROR_CATEGORIES[_b]:
+            _ERROR_TYPE_DISTANCE[(_a, _b)] = 1
+        else:
+            _ERROR_TYPE_DISTANCE[(_a, _b)] = 2
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +252,10 @@ class MedicalCodingEnvironment(Environment):
         self._partial_observability: bool = False
         self._note_sections: List[tuple[str, str]] = []  # (header, body) pairs
         self._revealed_section_count: int = 0
+        # Feature G: physician clarifications
+        self._clarifications_asked: List[str] = []
+        # Feature M: episode metrics (populated at episode end)
+        self._episode_metrics: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------
     # Public API

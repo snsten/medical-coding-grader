@@ -30,6 +30,10 @@ class MedicalCodingAction(Action):
         Required: code (str), error_type (str), justification (str)
         error_type must be one of: demographic_mismatch, excludes1_conflict,
         ncci_edit, specificity_error, untraceable_code
+    - ask_clarifying_question: Ask a simulated physician for missing clinical information.
+        Required: question (str)
+        Use when the clinical note is ambiguous or lacks information needed to
+        determine the correct code. The environment returns the physician's response.
     - submit_audit: End the episode and submit the draft report for grading.
         No additional fields required.
     """
@@ -43,6 +47,7 @@ class MedicalCodingAction(Action):
         "query_guideline",
         "check_ncci_edits",
         "flag_error",
+        "ask_clarifying_question",
         "submit_audit",
     ] = Field(
         ...,
@@ -51,6 +56,7 @@ class MedicalCodingAction(Action):
             "'query_guideline' (look up a code's official guidelines), "
             "'check_ncci_edits' (check if two CPT codes have a PTP bundling conflict), "
             "'flag_error' (record a coding error in the draft audit report), "
+            "'ask_clarifying_question' (ask physician for missing clinical information), "
             "'submit_audit' (submit the completed audit report for grading)."
         ),
     )
@@ -107,6 +113,16 @@ class MedicalCodingAction(Action):
             "Clinical and coding rationale for the flagged error. "
             "Required for action_type='flag_error'. "
             "Should cite the specific guideline rule or NCCI edit that is violated."
+        ),
+    )
+
+    # -- ask_clarifying_question fields --
+    question: Optional[str] = Field(
+        default=None,
+        description=(
+            "Question to ask the simulated physician for clarification. "
+            "Required for action_type='ask_clarifying_question'. "
+            "Use when documentation is ambiguous or missing information needed for coding."
         ),
     )
 
@@ -190,6 +206,10 @@ class MedicalCodingObservation(Observation):
         default_factory=list,
         description="List of code pairs already checked via check_ncci_edits (formatted as 'code1|code2').",
     )
+    clarifications_asked: List[str] = Field(
+        default_factory=list,
+        description="List of clarifying questions asked via ask_clarifying_question this episode.",
+    )
     last_action_error: Optional[str] = Field(
         default=None,
         description="Error message if the last action was invalid (e.g. missing required field, hallucinated code), else null.",
@@ -197,4 +217,13 @@ class MedicalCodingObservation(Observation):
     grader_score: Optional[float] = Field(
         default=None,
         description="Final grader score [0.0, 1.0] set when submit_audit is called, else null.",
+    )
+    episode_metrics: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Detailed trajectory evaluation metrics, populated only when done=True. "
+            "Includes: trajectory_length, tool_failure_rate, investigation_coverage, "
+            "flag_precision, flag_recall, avg_reward_per_step, "
+            "investigation_before_flag_rate, clarification_count."
+        ),
     )
