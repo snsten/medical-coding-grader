@@ -520,3 +520,213 @@ __all__ = ["MedicalCodingAction", "MedicalCodingObservation"]
 
 **Recommendation**: Fix O + P immediately (bugs). Then N (Dockerfile modernisation)
 before the next HF Space push to ensure `openenv build` compatibility.
+
+---
+---
+
+# Phase 4: HF Spaces Enhancement
+
+All Phase 1–3 items are assumed complete. The gaps below are **HF Spaces presentation,
+compatibility, and discoverability** improvements identified from the verified reference.
+
+---
+
+## T. Gradio Landing Page — Custom UI Dashboard (HIGH PRIORITY)
+
+**What**: A `server/gradio_landing.py` Gradio-based web UI that replaces the default
+OpenEnv inspector. The reference env uses this as the user-facing HF Spaces interface.
+
+
+**Sections to build**:
+1. **Overview & Scenarios** — list all 5 tasks, difficulty badges, expected errors table
+2. **Leaderboard** — static model comparison table (GPT-4, Claude, Qwen baselines from README)
+3. **Traces** — interactive step-by-step replay of a stored episode trace (JSON → rendered)
+4. **Playground** — live episode runner where a visitor can step through a task manually
+
+**Implementation plan**:
+1. Add `gradio` to `pyproject.toml` / `Dockerfile` dependencies
+2. Create `server/gradio_landing.py`:
+   - `import gradio as gr` and `from server.environment import MedicalCodingEnvironment`
+   - Session dict (`sessions: Dict[str, MedicalCodingEnvironment]`) with `asyncio.Lock`
+   - UUID-keyed sessions so multiple HF Space visitors don't collide
+   - Custom CSS with GitHub Dark theme (match reference style)
+   - Mermaid/markdown task cards for the Overview tab
+   - Static leaderboard `gr.Dataframe` from README baseline scores
+3. Mount Gradio app at `"/"` in `server/app.py` alongside the API routes
+4. Keep `/api/reset`, `/api/step`, `/health` as JSON endpoints
+
+**Why important for HF Spaces**:
+- HF Spaces visitors see the landing page first — without it they get a blank API response
+- Judges can interactively explore the environment without running inference.py locally
+- Leaderboard and trace viewer show the environment is a complete, polished submission
+
+**Files to create/modify**: `server/gradio_landing.py`, `server/app.py`, `pyproject.toml`,
+`Dockerfile`
+
+---
+
+## U. HTTP Session-Based API (HF Spaces Compatibility) (HIGH PRIORITY)
+
+**What**: Replace the single `/reset` + `/step` endpoints with a session-keyed API:
+- `POST /api/reset` → creates a new session UUID, returns `{session_id, observation}`
+- `POST /api/call_tool` → body: `{session_id, action_type, ...}`, returns `{observation, reward, done}`
+- `POST /api/close` → terminates session and frees memory
+
+
+**Why critical for HF Spaces**:
+- HF Spaces uses a reverse proxy with aggressive timeout (~30s). Long-lived WebSocket
+  connections get killed mid-episode.
+- HTTP POST is request-response, immune to proxy timeouts.
+- Stateless-per-request pattern means no WebSocket goroutines left dangling on Space restarts.
+
+**Implementation plan**:
+1. Add `sessions: Dict[str, MedicalCodingEnvironment] = {}` and
+   `sessions_lock = asyncio.Lock()` module-level in `app.py`
+2. Rewrite `/reset` → `/api/reset`:
+   - `session_id = str(uuid.uuid4())`
+   - `async with sessions_lock: sessions[session_id] = env; env.reset(task_id=...)`
+   - Return `{"session_id": session_id, "observation": obs.model_dump()}`
+3. Rewrite `/step` → `/api/call_tool`:
+   - Look up session by `session_id`, call `env.step(action)`, return full obs
+4. Add `/api/close` to delete session and free memory
+5. Keep backward-compat `/reset` and `/step` as thin shims
+
+**Files to modify**: `server/app.py`, `client.py` (update to use new endpoints)
+
+---
+
+## V. Test Suite (MEDIUM PRIORITY)
+
+**What**: Add a `tests/` directory with pytest tests covering env correctness,
+reward function, and reward hacking resistance.
+
+**Reference**: tests/ has 5 test files:
+- `test_env_cycle.py` — reset → N steps → done, verify observation schema
+- `test_reward.py` — verify each reward signal fires correctly
+- `test_reward_hacking.py` — verify flag-everything strategy penalized by FP deductions
+- (no randomization tests needed since our random gen is simpler)
+
+**Implementation plan**:
+1. Create `tests/__init__.py` (empty)
+2. `tests/test_env_cycle.py`:
+   ```python
+   def test_reset_returns_valid_obs():
+       env = MedicalCodingEnvironment()
+       obs = env.reset(task_id="easy_demographic")
+       assert obs.task_id == "easy_demographic"
+       assert obs.patient_demographics["sex"] == "male"
+
+   def test_submit_audit_ends_episode():
+       env = MedicalCodingEnvironment()
+       env.reset(task_id="easy_demographic")
+       action = MedicalCodingAction(action_type="submit_audit")
+       obs = env.step(action)
+       assert obs.done
+       assert obs.grader_score is not None
+   ```
+3. `tests/test_reward.py`:
+   - Correct flag → score ≥ SUCCESS_THRESHOLD
+   - False positive flag → grader_score reduced by FP penalty
+   - Querying with hallucinated code → reward == -0.5
+4. `tests/test_reward_hacking.py`:
+   - Flag all 5 codes in every task → grader_score ≤ 0.3 (FP penalties dominate)
+5. Add `pytest` to `pyproject.toml` dev dependencies
+
+**Files to create**: `tests/__init__.py`, `tests/test_env_cycle.py`,
+`tests/test_reward.py`, `tests/test_reward_hacking.py`
+
+---
+
+## W. README Frontmatter: Add `app_port` (LOW PRIORITY)
+
+**What**: The HF Spaces README frontmatter is missing `app_port: 7860` compared to
+the reference implementation.
+
+```yaml
+---
+title: Environment
+emoji: 🔧
+colorFrom: red
+colorTo: gray
+sdk: docker
+app_port: 7860
+---
+```
+
+**Why**: `app_port` tells HF Spaces which container port to proxy. Without it, HF Spaces
+defaults to port 7860 anyway, but the explicit declaration is the documented spec for
+Docker SDK spaces and prevents future routing issues.
+
+**Change needed**: Add `app_port: 7860` to the frontmatter block in `README.md`.
+
+**Files to modify**: `README.md`
+
+---
+
+## X. Static Output Directories (LOW PRIORITY)
+
+**What**: Create `outputs/` directory structure with placeholder `.gitkeep` files:
+```
+outputs/
+├── leaderboard/   (for future model score JSON assets)
+├── state_graphs/  (for SVG/PNG visualizations of task state diagrams)
+└── ui_traces/     (for serialized episode trace JSON files)
+```
+
+**Reference**: (same structure, used by the Gradio UI)
+
+**Why**: Once Feature T (Gradio UI) is implemented, these directories will hold
+pre-generated assets that Gradio serves as static files. Creating them early allows
+the Gradio `serve_static` routes to be wired up even before the asset generation
+scripts run.
+
+**Files to create**: `outputs/leaderboard/.gitkeep`, `outputs/state_graphs/.gitkeep`,
+`outputs/ui_traces/.gitkeep`
+
+---
+
+## Y. Root `__init__.py` Package Marker (LOW PRIORITY)
+
+**What**: Add an empty `__init__.py` at the project root (same level as `models.py`,
+`client.py`, `inference.py`).
+
+**Reference**: __init__.py (empty file, 0 bytes)
+
+**Why**: Some Python packaging tools (uv, setuptools in editable mode) require a root
+`__init__.py` to treat the directory as an importable package. Without it, `from models
+import MedicalCodingAction` can fail in certain Docker build contexts where the PYTHONPATH
+is set to `/app` instead of `/app/env`.
+
+**Files to create**: `__init__.py` (empty)
+
+---
+
+## Z. `.python-version` File (LOW PRIORITY)
+
+**What**: Add a `.python-version` file specifying `3.11` (matching our Dockerfile and
+the reference env's toolchain constraint).
+
+**Why**: Tools like `uv`, `pyenv`, and GitHub Actions matrix runners respect
+`.python-version` to auto-select the interpreter. This ensures local development and
+CI use the same Python version as the Docker image without needing explicit flags.
+
+**Files to create**: `.python-version` (contains `3.11`)
+
+---
+
+## Phase 4 Priority Order
+
+| Priority | Item | Impact | Effort | HF Spaces Benefit |
+|---|---|---|---|---|
+| 1 | **T** (Gradio landing page) | High | High | User-facing UI, judging visibility |
+| 2 | **U** (HTTP session API) | High | Medium | Eliminates WS proxy timeout issues |
+| 3 | **V** (test suite) | Medium | Low | Code quality, hackathon rubric item |
+| 4 | **W** (app_port frontmatter) | Low | Trivial | Explicit HF Spaces port declaration |
+| 5 | **X** (output directories) | Low | Trivial | Pre-wires Gradio static file routes |
+| 6 | **Y** (root __init__.py) | Low | Trivial | Python packaging correctness |
+| 7 | **Z** (.python-version) | Low | Trivial | Toolchain consistency |
+
+**Recommendation**: Implement T + U — they are the most visible HF Spaces differentiators.
+The Gradio UI is what visitors/judges interact with; the HTTP session API ensures long
+episodes don't break on the HF Spaces reverse proxy. V (tests) should follow to demonstrate
+code quality. W–Z are trivial one-liners done in a single commit.
